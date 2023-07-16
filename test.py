@@ -4,6 +4,20 @@ import scipy.io.wavfile
 import sys
 
 
+def repitch(input, semitones):
+    # placeholder, replace with correct multiplier based on semitones (or cents etc, modify function)
+    multiplier = semitones
+    stretched = time_stretch(input, multiplier)
+    return resample(stretched, multiplier)
+
+
+def resample(input, speed):
+    out_len = int(len(input) / speed)
+    new_x = np.linspace(0, len(input), out_len)
+    old_x = np.arange(len(input))
+    return np.interp(new_x, old_x, input)
+
+
 def time_stretch(input, multiplier):
     frame_len = int(44100 * 100 / 1000)
     out_offset = int(44100 * 70 / 1000)
@@ -55,13 +69,9 @@ else:
     right_channel = clip[:, 1]
 
 old_len = len(left_channel)
-left_channel = time_stretch(left_channel, 2.0)
-right_channel = time_stretch(right_channel, 2.0)
+left_channel = repitch(left_channel, 0.9)
+right_channel = repitch(right_channel, 0.9)
 print(len(left_channel) / old_len)
-
-# makes it go one octave higher
-left_channel = left_channel[::2]
-right_channel = right_channel[::2]
 
 p = pyaudio.PyAudio()
 stream = p.open(44100, 2, pyaudio.paFloat32, False, True)
