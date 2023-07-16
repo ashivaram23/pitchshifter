@@ -4,10 +4,6 @@ import scipy.io.wavfile
 import sys
 
 
-# Write resample function, start with basic linear interpolation
-# Determine how to translate a pitch into an appropriate combination and test
-# Then start waveform similarity part
-# Also in extremely low frame len and offset (too low to matter, like 10 and 7, but may still want to address this for neatness sake), in some multipliers line 25 doesnt add up, probably because the offset is so small there's some mismatching there with the rounding and multiplying
 def time_stretch(input, multiplier):
     frame_len = int(44100 * 100 / 1000)
     out_offset = int(44100 * 70 / 1000)
@@ -45,41 +41,33 @@ def time_stretch(input, multiplier):
     return out_padded[out_offset : out_offset + out_len]
 
 
-# _, data = scipy.io.wavfile.read(sys.argv[1])
-
-# clip = np.array(data, dtype="float32")
-# max_amp = 1.0 if data.dtype == np.float32 else np.iinfo(data.dtype).max
-# clip /= max(max_amp, np.max(np.abs(clip)))
-
-# left_channel = clip[:, 0]
-# right_channel = clip[:, 1]
-
-# old_len = len(left_channel)
-# left_channel = time_stretch(left_channel, float(sys.argv[2]))
-# right_channel = time_stretch(right_channel, float(sys.argv[2]))
-# print(len(left_channel) / old_len)
-
-# p = pyaudio.PyAudio()
-# stream = p.open(44100, 2, pyaudio.paFloat32, False, True)
-# interleaved = np.empty(left_channel.size * 2, dtype="float32")
-# interleaved[0::2] = left_channel
-# interleaved[1::2] = right_channel
-# stream.write(interleaved.tobytes())
-# stream.close()
-# p.terminate()
-
 _, data = scipy.io.wavfile.read(sys.argv[1])
 
 clip = np.array(data, dtype="float32")
 max_amp = 1.0 if data.dtype == np.float32 else np.iinfo(data.dtype).max
 clip /= max(max_amp, np.max(np.abs(clip)))
 
-old_len = len(clip)
-clip = time_stretch(clip, float(sys.argv[2]))
-print(len(clip) / old_len)
+if len(clip.shape) == 1:
+    left_channel = clip
+    right_channel = clip
+else:
+    left_channel = clip[:, 0]
+    right_channel = clip[:, 1]
+
+old_len = len(left_channel)
+left_channel = time_stretch(left_channel, 2.0)
+right_channel = time_stretch(right_channel, 2.0)
+print(len(left_channel) / old_len)
+
+# makes it go one octave higher
+left_channel = left_channel[::2]
+right_channel = right_channel[::2]
 
 p = pyaudio.PyAudio()
-stream = p.open(44100, 1, pyaudio.paFloat32, False, True)
-stream.write(clip.tobytes())
+stream = p.open(44100, 2, pyaudio.paFloat32, False, True)
+interleaved = np.empty(left_channel.size * 2, dtype="float32")
+interleaved[0::2] = left_channel
+interleaved[1::2] = right_channel
+stream.write(interleaved.tobytes())
 stream.close()
 p.terminate()
