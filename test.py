@@ -38,20 +38,33 @@ def time_stretch(input, multiplier):
     window = np.linspace(0, 2 * np.pi, frame_len)
     window = (1 - np.cos(window)) / 2
 
+    last_in_start = 0
     for i in range(int(np.ceil(num_frames))):
         in_start = in_offset * i
         in_end = in_start + frame_len
         out_start = out_offset * i
         out_end = out_start + frame_len
 
-        # for waveform similarity, decide eg 10 ms and maybe just iterate one for every ms
-        # so iterate from -10 to 10? and store the best index and value (of some metric), make sure no out of bounds etc
-        # cross correlation is the metric, so either loop -10 to 10 and ?? or use np.argmax and np.correlate? with something
-        # something about "natural progression" for similarity etc, clarify
-        # then the wsola will be DONE and fluttering should be less (transient and formant problems still expected)
+        # comment this part out to see difference without wsola
+        if i > 0:
+            correlations = np.vectorize(lambda shift: np.correlate(in_padded[in_start + shift : in_end + shift], in_padded[last_in_start + out_offset : last_in_start + out_offset + frame_len])[0])
 
+            max_shift = int(44100 * 10 / 1000)
+            step = int(44100 * 0.2 / 1000) # is this good enough (to not skip over periods)
+            shifts = np.arange(-max_shift, max_shift, step)
+            
+            values = correlations(shifts)
+            best_shift = shifts[np.argmax(values)]
+            in_start += best_shift
+            in_end += best_shift
+
+        # for neatness should create np zeros of fixed length first for in_padded and then copy over to avoid any potential broadcast size mismatches, which happen for a few unlucky inputs
+        # python3 test8.py piano1.wav 1.5 -4 FAILS, so again could create array first to bandage, or ideally prevent them happening in the first place (or maybe theyre supposed to happen, because of the shifts? but find out why they happen)
+        # python3 test8.py brasspluck.wav 1.51 -5
+        # if not using numpy those would be out of bounds problems, either way ensure cant happen here and above
         out_padded[out_start:out_end] += in_padded[in_start:in_end] * window
         out_max_amp[out_start:out_end] += window
+        last_in_start = in_start
     
     np.seterr(invalid="ignore")
     out_padded = np.minimum(out_padded / out_max_amp, 1.0)
@@ -60,7 +73,7 @@ def time_stretch(input, multiplier):
     return out_padded[out_offset : out_offset + out_len]
 
 
-# python3 test7.py [filename] [time stretch, float] [semitone change, int]
+# python3 test8.py [filename] [time stretch, float] [semitone change, int]
 _, data = scipy.io.wavfile.read(sys.argv[1])
 
 clip = np.array(data, dtype="float32")
