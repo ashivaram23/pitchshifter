@@ -4,10 +4,9 @@ import scipy.io.wavfile
 import sys
 
 
-def repitch(input, semitones):
-    # placeholder, replace with correct multiplier based on semitones (or cents etc, modify function)
-    multiplier = semitones
-    stretched = time_stretch(input, multiplier)
+def repitch(input, stretch, semitones):
+    multiplier = np.power(1.05946, semitones)
+    stretched = time_stretch(input, stretch * multiplier)
     return resample(stretched, multiplier)
 
 
@@ -45,6 +44,12 @@ def time_stretch(input, multiplier):
         out_start = out_offset * i
         out_end = out_start + frame_len
 
+        # for waveform similarity, decide eg 10 ms and maybe just iterate one for every ms
+        # so iterate from -10 to 10? and store the best index and value (of some metric), make sure no out of bounds etc
+        # cross correlation is the metric, so either loop -10 to 10 and ?? or use np.argmax and np.correlate? with something
+        # something about "natural progression" for similarity etc, clarify
+        # then the wsola will be DONE and fluttering should be less (transient and formant problems still expected)
+
         out_padded[out_start:out_end] += in_padded[in_start:in_end] * window
         out_max_amp[out_start:out_end] += window
     
@@ -55,6 +60,7 @@ def time_stretch(input, multiplier):
     return out_padded[out_offset : out_offset + out_len]
 
 
+# python3 test7.py [filename] [time stretch, float] [semitone change, int]
 _, data = scipy.io.wavfile.read(sys.argv[1])
 
 clip = np.array(data, dtype="float32")
@@ -68,10 +74,8 @@ else:
     left_channel = clip[:, 0]
     right_channel = clip[:, 1]
 
-old_len = len(left_channel)
-left_channel = repitch(left_channel, 0.9)
-right_channel = repitch(right_channel, 0.9)
-print(len(left_channel) / old_len)
+left_channel = repitch(left_channel, float(sys.argv[2]), int(sys.argv[3]))
+right_channel = repitch(right_channel, float(sys.argv[2]), int(sys.argv[3]))
 
 p = pyaudio.PyAudio()
 stream = p.open(44100, 2, pyaudio.paFloat32, False, True)
