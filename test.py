@@ -47,14 +47,12 @@ def time_stretch(input, multiplier):
 
         # comment this part out to see difference without wsola
         if i > 0:
-            correlations = np.vectorize(lambda shift: np.correlate(in_padded[in_start + shift : in_end + shift], in_padded[last_in_start + out_offset : last_in_start + out_offset + frame_len])[0])
-
             max_shift = int(44100 * 10 / 1000)
-            step = int(44100 * 0.2 / 1000) # is this good enough (to not skip over periods)
-            shifts = np.arange(-max_shift, max_shift, step)
+            overlap = frame_len - out_offset
+            correlation = np.correlate(in_padded[in_start - max_shift : in_start + overlap + max_shift], in_padded[last_in_start + out_offset : last_in_start + out_offset + overlap])
+            # correlation = np.correlate(in_padded[in_start - max_shift : in_end + max_shift], in_padded[last_in_start + out_offset : last_in_start + out_offset + frame_len])
             
-            values = correlations(shifts)
-            best_shift = shifts[np.argmax(values)]
+            best_shift = np.argmax(correlation) - max_shift
             in_start += best_shift
             in_end += best_shift
 
