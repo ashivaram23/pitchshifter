@@ -26,18 +26,17 @@ function updateAudio() {
   console.log(`${pitchSlider.value}, ${timeSlider.value}`);
 }
 
-// emcc test.cpp -o out.wasm -O3 --no-entry -s "EXPORTED_FUNCTIONS=['_repitchAndStretch']" -s IMPORTED_MEMORY=1 -s ALLOW_MEMORY_GROWTH=1
 const memory = new WebAssembly.Memory({initial: 256, maximum: 32768});
-const memoryView = new Float32Array(memory.buffer);
-const importObject = {env: {memory: memory}}; // add memory base to be consistent, see the names used on MDN 
-WebAssembly.instantiateStreaming(fetch("out1.wasm"), importObject).then(useWasm);
+const memoryFloat32View = new Float32Array(memory.buffer);
+const memoryInt32View = new Int32Array(memory.buffer);
+const importObject = {env: {memory: memory, emscripten_notify_memory_growth: growMemory}};
+WebAssembly.instantiateStreaming(fetch("out.wasm"), importObject).then(useWasm);
 
 function useWasm(source) {
-  console.log(source.instance.exports);
-  memoryView[0] = 8;
-  console.log(memoryView[0]);
-  console.log(source.instance.exports.testMethod(0, 1, 2));
-  console.log(memoryView[0]);
+  const exports = source.instance.exports;
+  console.log(exports.repitchAndStretch(0, 0, 0.0, 0));
 }
 
-// emcc test.c -o out1.wasm -O3 --no-entry -s "EXPORTED_FUNCTIONS=['_testMethod']" -s IMPORTED_MEMORY=1 -s ALLOW_MEMORY_GROWTH=1
+function growMemory() {
+  // Handle memory growth
+}
