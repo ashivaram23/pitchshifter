@@ -9,8 +9,6 @@ function openFile(event) {
 
   const playback = document.getElementById("playback");
   playback.setAttribute("src", URL.createObjectURL(file));
-
-  // Get it into an array? / audio context? etc somehow and console log the type (Float32 should be) and size of it
 }
 
 const pitchSlider = document.getElementById("semitones");
@@ -28,10 +26,18 @@ function updateAudio() {
   console.log(`${pitchSlider.value}, ${timeSlider.value}`);
 }
 
-// File to (offline?) audio context
-// Check that accessing it as needed for processing works like an array of size 44100*sec, float32 uncompressed etc
-// Allow playback with button etc
-// How to connect with audio worker?
-// How to send that to wasm
-// Write some basic C++ -> wasm to test processing audio array and replaying back works well and FAST
-// Then two currents of tasks: (1) the C++ part for translating the wsola, and (2) the js part for making the interface all work and properly moving the audio around to the module and back
+// emcc test.cpp -o out.wasm -O3 --no-entry -s "EXPORTED_FUNCTIONS=['_repitchAndStretch']" -s IMPORTED_MEMORY=1 -s ALLOW_MEMORY_GROWTH=1
+const memory = new WebAssembly.Memory({initial: 256, maximum: 32768});
+const memoryView = new Float32Array(memory.buffer);
+const importObject = {env: {memory: memory}}; // add memory base to be consistent, see the names used on MDN 
+WebAssembly.instantiateStreaming(fetch("out1.wasm"), importObject).then(useWasm);
+
+function useWasm(source) {
+  console.log(source.instance.exports);
+  memoryView[0] = 8;
+  console.log(memoryView[0]);
+  console.log(source.instance.exports.testMethod(0, 1, 2));
+  console.log(memoryView[0]);
+}
+
+// emcc test.c -o out1.wasm -O3 --no-entry -s "EXPORTED_FUNCTIONS=['_testMethod']" -s IMPORTED_MEMORY=1 -s ALLOW_MEMORY_GROWTH=1
