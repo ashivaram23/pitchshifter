@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+  <style>
+    body {
+      width: 600px;
+      margin: 0 auto;
+      font-family: sans-serif;
+    }
+    .panel {
+      margin-top: 10px;
+      margin-bottom: 10px;
+      background-color: #dddddd;
+    }
+    p {
+      margin: 0;
+    }
+  </style>
+  <script src="main.js" defer></script>
+</head>
+
+<body>
+  <h1>Pitch shifter / time stretcher</h1>
+  <p>Independently changes an audio clip&rsquo;s pitch and tempo by applying the waveform similarity overlap-add (WSOLA) algorithm.</p>
+
+  <div class="panel">
+    <button id="file-button">Load new file</button>
+    <input type="file" id="file-select" accept="audio/*" style="display: none;">
+    <span id="filename"></span>
+  </div>
+
+  <div class="panel">
+    <audio controls id="playback"></audio>
+    <div>
+      Visualization (replace with canvas)
+    </div>
+  </div>
+
+  <div class="panel">
+    <p>Pitch and time settings, combine with below as flex</p>
+    <p>
+      <input type="range" name="semitones" id="semitones" min="-12" max="12" value="0" step="1"/>
+      <label for="semitones" id="semitones-label">0</label>
+    </p>
+    <p>
+      <input type="range" name="time-stretch" id="time-stretch" min="0.4" max="2.5" value="1" step="0.01"/>
+      <label for="time-stretch" id="time-stretch-label">1.00</label>
+    </p>
+  </div>
+
+  <div class="panel">
+    <p>Advanced settings with warning if manually enter glitchy values</p>
+  </div>
+
+  <p>Explanations</p>
+</body>
+
+</html>
