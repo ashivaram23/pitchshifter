@@ -1,5 +1,7 @@
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 struct result {
   float *resultData;
@@ -28,7 +30,8 @@ int resample(float *input, int inputLength, float **output, float speed) {
 
 void fillWindowFunction(float *window, int length) {
   for (int i = 0; i < length; i++) {
-    window[i] = 1.0;
+    float xValue = i * (2 * M_PI / (float)length);
+    window[i] = 1 - cos(xValue);
   }
 }
 
@@ -87,30 +90,30 @@ int timeStretch(float *input, int inputLength, float **output, float multiplier)
     int inputStart = -outputOffset + inputOffset * i;
     int outputStart = -outputOffset + outputOffset * i;
 
-    if (i > 0) {
-      float bestSum = 0;
-      int bestShift = 0;
-      int maxShift = 10 * 44100 / 1000;
-      int overlapLength = segmentLength - outputOffset;
-      float overlap[overlapLength];
+    // if (i > 0) {
+    //   float bestSum = 0;
+    //   int bestShift = 0;
+    //   int maxShift = 10 * 44100 / 1000;
+    //   int overlapLength = segmentLength - outputOffset;
+    //   float overlap[overlapLength];
 
-      for (int j = -maxShift; j < maxShift; j++) {
-        arrayMultiply(input, inputLength, inputStart + j, input, inputLength, lastInputStart, overlap, overlapLength, 0, overlapLength);
+    //   for (int j = -maxShift; j < maxShift; j++) {
+    //     arrayMultiply(input, inputLength, inputStart + j, input, inputLength, lastInputStart, overlap, overlapLength, 0, overlapLength);
         
-        float sum = 0;
-        for (int k = 0; k < overlapLength; k++) {
-          sum += overlap[k];
-        }
+    //     float sum = 0;
+    //     for (int k = 0; k < overlapLength; k++) {
+    //       sum += overlap[k];
+    //     }
 
-        if (j == -maxShift || sum > bestSum) {
-          bestSum = sum;
-          bestShift = j;
-        }
-      }
+    //     if (j == -maxShift || sum > bestSum) {
+    //       bestSum = sum;
+    //       bestShift = j;
+    //     }
+    //   }
 
-      inputStart += bestShift;
-      outputStart += bestShift;
-    }
+    //   inputStart += bestShift;
+    //   outputStart += bestShift;
+    // }
 
     lastInputStart = inputStart;
 
@@ -153,4 +156,47 @@ struct result *repitchAndStretch(float *data, int length, float stretch, int sem
 void freeAllocatedMemory(struct result *result) {
   free(result->resultData);
   free(result);
+}
+
+int main(int argc, char *argv[]) {
+  float stretch = atof(argv[1]);
+  int semitones = atoi(argv[2]);
+  int repeats = atoi(argv[3]);
+
+  FILE *inputFile = fopen("brasspluck_raw.txt", "r");
+  char *line = NULL;
+  size_t length = 0;
+
+  float data[352800];
+  for (int i = 0; i < 352800; i++) {
+    getline(&line, &length, inputFile);
+    data[i] = atof(line);
+  }
+
+  free(line);
+  fclose(inputFile);
+
+  struct result *result = repitchAndStretch(data, 352800, stretch, semitones);
+  FILE *outputFile = fopen("compareCheckC.txt", "w");
+  for (int i = 0; i < result->resultLength; i++) {
+    fprintf(outputFile, "%.5f\n", result->resultData[i]);
+  }
+
+  fclose(outputFile);
+  freeAllocatedMemory(result);
+
+  struct timespec startTime;
+  clock_gettime(CLOCK_REALTIME, &startTime);
+
+  for (int i = 0; i < repeats; i++) {
+    struct result *res = repitchAndStretch(data, 352800, stretch, semitones);
+    freeAllocatedMemory(res);
+  }
+
+  struct timespec endTime;
+  clock_gettime(CLOCK_REALTIME, &endTime);
+  
+  time_t elapsedNs = (endTime.tv_sec - startTime.tv_sec) * 1e9;
+  float elapsedSec = (elapsedNs + endTime.tv_nsec - startTime.tv_nsec) / 1e9;
+  printf("C\t%f\n", elapsedSec);
 }
