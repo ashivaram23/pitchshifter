@@ -7,7 +7,12 @@ struct result {
 };
 
 int resample(float *input, int inputLength, float **output, float speed) {
-  return 0;
+  int outputLength = inputLength / speed;
+  *output = calloc(outputLength, sizeof(float));
+
+  // Resample input here with linear interpolation
+
+  return outputLength;
 }
 
 void fillWindowFunction(float *window, int length) {
@@ -16,12 +21,32 @@ void fillWindowFunction(float *window, int length) {
   }
 }
 
-void arrayMultiply(float *a, int aBound, float *b, int bBound, float *c, int cBound, int length) {
-  // Custom zero padded element wise multiply. c = a * b.
+void arrayMultiply(float *a, int aLength, int aStart, float *b, int bLength, int bStart, float *c, int cLength, int cStart, int length) {
+  if (aStart >= aLength || bStart >= bLength || cStart >= cLength || cStart < 0) {
+    return;
+  }
+
+  int destLength = cLength - cStart < length ? cLength - cStart : length;
+  for (int i = 0; i < destLength; i++) {
+    if (aStart + i < 0 || aStart + i >= aLength || bStart + i < 0 || bStart + i >= bLength) {
+      c[cStart + i] = 0;
+    } else {
+      c[cStart + i] = a[aStart + i] * b[bStart + i];
+    }
+  }
 }
 
-void arrayAdd(float *a, int aBound, float *b, int bBound, float *c, int cBound, int length) {
-  // Custom zero padded element wise add. b = a + b.
+void arrayAdd(float *a, int aLength, int aStart, float *b, int bLength, int bStart, float *c, int cLength, int cStart, int length) {
+  if (aStart >= aLength || bStart >= bLength || cStart >= cLength || cStart < 0) {
+    return;
+  }
+
+  int destLength = cLength - cStart < length ? cLength - cStart : length;
+  for (int i = 0; i < destLength; i++) {
+    int aValue = aStart + i >= 0 && aStart + i < aLength ? a[aStart + i] : 0;
+    int bValue = bStart + i >= 0 && bStart + i < bLength ? b[bStart + i] : 0;
+    c[cStart + i] = aValue + bValue;
+  }
 }
 
 int timeStretch(float *input, int inputLength, float **output, float multiplier) {
@@ -43,20 +68,28 @@ int timeStretch(float *input, int inputLength, float **output, float multiplier)
   fillWindowFunction(window, segmentLength);
 
   for (int i = 0; i < numSegments; i++) {
-    // Get input start, output copy start
-    // (Later) find wsola nudge
-    // Copy to temp array and call custom zero-padding multiply with window
-    // Call custom zero-padding copy (or actually add) function with segment length
-    // Call custom zero-padding add function for max amp
+    int inputStart = -outputOffset + inputOffset * i;
+    int outputStart = -outputOffset + outputOffset * i;
+
+    // Find WSOLA shift here
+
+    float segment[segmentLength];
+    arrayMultiply(input, inputLength, inputStart, window, segmentLength, 0, segment, segmentLength, 0, segmentLength);
+    arrayAdd(segment, segmentLength, 0, *output, outputLength, outputStart, *output, outputLength, outputStart, segmentLength);
+    arrayAdd(window, segmentLength, 0, outputMaxAmp, outputLength, outputStart, outputMaxAmp, outputLength, outputStart, segmentLength);
   }
 
-  // Loop for each segment, including wsola part
-  // Output normalize
-  // Return
+  for (int i = 0; i < outputLength; i++) {
+    if (outputMaxAmp > 0) {
+      (*output)[i] = (*output)[i] / outputMaxAmp[i];
+    }
 
-  // Make separate functions for each np task eg multiplying two equal length arrays (or copying into equal length spot, aka your own custom memcpy alternative that accepts out of bounds -- same for other np analogues, then can also incorporate parallelism etc easily later too where applicable) could be with the two arrays, two start indices (can be out of bounds), and one length, and internally it checks bounds and acts as if zero padded
+    if ((*output)[i] > 1.0) {
+      (*output)[i] = 1.0;
+    }
+  }
 
-  return 0;
+  return outputLength;
 }
 
 struct result *repitchAndStretch(float *data, int length, float stretch, int semitones) {
