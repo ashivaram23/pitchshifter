@@ -26,9 +26,12 @@ function updateAudio() {
   console.log(`${pitchSlider.value}, ${timeSlider.value}`);
 }
 
+// This should be done within a worker/thread/something separate?
+// Also would you need manual cleanup function to be called after for the C frees?
+// And then importantly how would the memory in general be kept from continually growing, make sure it doesn't just accumulate and stuff gets destroyed by JS or whatever is appropriate when necessary
 const memory = new WebAssembly.Memory({initial: 256, maximum: 32768});
 const memoryFloat32View = new Float32Array(memory.buffer);
-const memoryInt32View = new Int32Array(memory.buffer);
+const memoryUint8View = new Uint8Array(memory.buffer);
 const importObject = {env: {memory: memory, emscripten_notify_memory_growth: growMemory}};
 WebAssembly.instantiateStreaming(fetch("out.wasm"), importObject).then(useWasm);
 
