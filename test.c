@@ -10,7 +10,18 @@ int resample(float *input, int inputLength, float **output, float speed) {
   int outputLength = inputLength / speed;
   *output = calloc(outputLength, sizeof(float));
 
-  // Resample input here with linear interpolation
+  for (int i = 0; i < outputLength; i++) {
+    float correspondingIndex = i * inputLength / outputLength;
+    int lowIndex = floor(correspondingIndex);
+    int highIndex = ceil(correspondingIndex);
+
+    if (lowIndex == highIndex) {
+      (*output)[i] = input[lowIndex];
+    } else {
+      float interpolate = correspondingIndex - lowIndex;
+      (*output)[i] = lowIndex * (1 - interpolate) + highIndex * interpolate;
+    }
+  }
 
   return outputLength;
 }
@@ -50,7 +61,7 @@ void arrayAdd(float *a, int aLength, int aStart, float *b, int bLength, int bSta
 }
 
 int timeStretch(float *input, int inputLength, float **output, float multiplier) {
-  int segmentLength = 44100 * 100 / 1000; // Make these passable from JS and also clean up with constants etc
+  int segmentLength = 44100 * 100 / 1000;
   int outputOffset = 44100 * 70 / 1000;
 
   int outputLength = inputLength * multiplier;
@@ -67,11 +78,37 @@ int timeStretch(float *input, int inputLength, float **output, float multiplier)
   float window[segmentLength];
   fillWindowFunction(window, segmentLength);
 
+  int lastInputStart = 0;
   for (int i = 0; i < numSegments; i++) {
     int inputStart = -outputOffset + inputOffset * i;
     int outputStart = -outputOffset + outputOffset * i;
 
-    // Find WSOLA shift here
+    if (i > 0) {
+      float bestSum = 0;
+      int bestShift = 0;
+      int maxShift = 44100 * 10 / 1000;
+      int overlapLength = segmentLength - outputOffset;
+      float overlap[overlapLength];
+
+      for (int j = -maxShift; j < maxShift; j++) {
+        arrayMultiply(input, inputLength, inputStart + j, input, inputLength, lastInputStart, overlap, overlapLength, 0, overlapLength);
+        
+        float sum = 0;
+        for (int k = 0; k < overlapLength; k++) {
+          sum += overlap[k];
+        }
+
+        if (j == -maxShift || sum > bestSum) {
+          bestSum = sum;
+          bestShift = j;
+        }
+      }
+
+      inputStart += bestShift;
+      outputStart += bestShift;
+    }
+
+    lastInputStart = inputStart;
 
     float segment[segmentLength];
     arrayMultiply(input, inputLength, inputStart, window, segmentLength, 0, segment, segmentLength, 0, segmentLength);
@@ -89,11 +126,12 @@ int timeStretch(float *input, int inputLength, float **output, float multiplier)
     }
   }
 
+  free(outputMaxAmp);
   return outputLength;
 }
 
 struct result *repitchAndStretch(float *data, int length, float stretch, int semitones) {
-  float multiplier = pow(1.05946, semitones); // Maybe use constant here etc
+  float multiplier = pow(1.05946, semitones);
 
   float *stretched;
   int stretchedLength = timeStretch(data, length, &stretched, stretch * multiplier);
@@ -105,5 +143,10 @@ struct result *repitchAndStretch(float *data, int length, float stretch, int sem
   struct result *output = malloc(sizeof(struct result));
   output->resultData = resampled;
   output->resultLength = resampledLength;
-  return output; // Create cleanup function later that frees resultData and output struct
+  return output;
+}
+
+void freeAllocatedMemory(struct result *result) {
+  free(result->resultData);
+  free(result);
 }
