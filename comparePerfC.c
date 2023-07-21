@@ -5,17 +5,17 @@
 
 struct result {
   float *resultData;
-  int resultLength;
+  long resultLength;
 };
 
-int resample(float *input, int inputLength, float **output, float speed) {
-  int outputLength = inputLength / speed;
+long resample(float *input, long inputLength, float **output, float speed) {
+  long outputLength = inputLength / speed;
   *output = calloc(outputLength, sizeof(float));
 
-  for (int i = 0; i < outputLength; i++) {
+  for (long i = 0; i < outputLength; i++) {
     float correspondingIndex = i * (inputLength / (float)outputLength);
-    int lowIndex = floor(correspondingIndex);
-    int highIndex = ceil(correspondingIndex);
+    long lowIndex = floor(correspondingIndex);
+    long highIndex = ceil(correspondingIndex);
 
     if (lowIndex == highIndex) {
       (*output)[i] = input[lowIndex];
@@ -28,81 +28,90 @@ int resample(float *input, int inputLength, float **output, float speed) {
   return outputLength;
 }
 
-void fillWindowFunction(float *window, int length) {
-  for (int i = 0; i < length; i++) {
+void fillWindowFunction(float *window, long length) {
+  for (long i = 0; i < length; i++) {
     float xValue = i * (2 * M_PI / (float)length);
-    window[i] = 1 - cos(xValue);
+    window[i] = (1 - cos(xValue)) / 2;
   }
 }
 
-void arrayMultiply(float *a, int aLength, int aStart, float *b, int bLength, int bStart, float *c, int cLength, int cStart, int length) {
-  if (cStart >= cLength) {
+void arrayMultiply(float *a, long aLength, long aStart, float *b, long bLength, long bStart, float *c, long cLength, long cStart, long length) {
+  if (cStart >= cLength || cStart + length <= 0) {
     return;
-  } else if (cStart < 0) {
+  }
+
+  if (cStart < 0) {
     length += cStart;
+    aStart -= cStart;
+    bStart -= cStart;
     cStart = 0;
   }
 
-  int destLength = cLength - cStart < length ? cLength - cStart : length;
-  for (int i = 0; i < destLength; i++) {
+  length = cLength - cStart < length ? cLength - cStart : length;
+  for (long i = 0; i < length; i++) {
     float aValue = aStart + i >= 0 && aStart + i < aLength ? a[aStart + i] : 0;
     float bValue = bStart + i >= 0 && bStart + i < bLength ? b[bStart + i] : 0;
     c[cStart + i] = aValue * bValue;
   }
 }
 
-void arrayAdd(float *a, int aLength, int aStart, float *b, int bLength, int bStart, float *c, int cLength, int cStart, int length) {
-  if (cStart >= cLength) {
+void arrayAdd(float *a, long aLength, long aStart, float *b, long bLength, long bStart, long length) {
+  if (bStart >= bLength || bStart + length <= 0) {
     return;
-  } else if (cStart < 0) {
-    length += cStart;
-    cStart = 0;
   }
 
-  int destLength = cLength - cStart < length ? cLength - cStart : length;
-  for (int i = 0; i < destLength; i++) {
+  if (bStart < 0) {
+    length += bStart;
+    aStart -= bStart;
+    bStart = 0;
+  }
+
+  length = bLength - bStart < length ? bLength - bStart : length;
+  for (long i = 0; i < length; i++) {
     float aValue = aStart + i >= 0 && aStart + i < aLength ? a[aStart + i] : 0;
-    float bValue = bStart + i >= 0 && bStart + i < bLength ? b[bStart + i] : 0;
-    c[cStart + i] = aValue + bValue;
+    b[bStart + i] += aValue;
   }
 }
 
-int timeStretch(float *input, int inputLength, float **output, float multiplier) {
-  int segmentLength = 100 * 44100 / 1000;
-  int outputOffset = 70 * 44100 / 1000;
+long timeStretch(float *input, long inputLength, float **output, float multiplier) {
+  long segmentLength = 100 * 44100 / 1000;
+  long outputOffset = 70 * 44100 / 1000;
 
-  int outputLength = inputLength * multiplier;
-  int inputPaddedLength = inputLength + 2 * outputOffset;
-  int outputPaddedLength = outputLength + 2 * outputOffset;
+  long outputLength = inputLength * multiplier;
+  long inputPaddedLength = inputLength + 2 * outputOffset;
+  long outputPaddedLength = outputLength + 2 * outputOffset;
 
   *output = calloc(outputLength, sizeof(float));
   float *outputMaxAmp = calloc(outputLength, sizeof(float));
 
   float numSegmentsDecimal = 1 + (outputPaddedLength - segmentLength) / (float)outputOffset;
-  int numSegments = ceil(numSegmentsDecimal);
-  int inputOffset = (inputPaddedLength - segmentLength) / (numSegmentsDecimal - 1);
+  long numSegments = ceil(numSegmentsDecimal);
+  long inputOffset = (inputPaddedLength - segmentLength) / (numSegmentsDecimal - 1);
 
   float window[segmentLength];
   fillWindowFunction(window, segmentLength);
 
-  int lastInputStart = 0;
-  for (int i = 0; i < numSegments; i++) {
-    int inputStart = -outputOffset + inputOffset * i;
-    int outputStart = -outputOffset + outputOffset * i;
+  long lastInputStart = 0;
+  for (long i = 0; i < numSegments; i++) {
+    long inputStart = -outputOffset + inputOffset * i;
+    long outputStart = -outputOffset + outputOffset * i;
 
     // if (i > 0) {
     //   float bestSum = 0;
-    //   int bestShift = 0;
-    //   int maxShift = 10 * 44100 / 1000;
-    //   int overlapLength = segmentLength - outputOffset;
-    //   float overlap[overlapLength];
+    //   long bestShift = 0;
+    //   long maxShift = 10 * 44100 / 1000;
+    //   long overlapLength = segmentLength - outputOffset;
 
-    //   for (int j = -maxShift; j < maxShift; j++) {
-    //     arrayMultiply(input, inputLength, inputStart + j, input, inputLength, lastInputStart, overlap, overlapLength, 0, overlapLength);
-        
+    //   for (long j = -maxShift; j < maxShift; j++) {
     //     float sum = 0;
-    //     for (int k = 0; k < overlapLength; k++) {
-    //       sum += overlap[k];
+    //     for (long k = 0; k < overlapLength; k++) {
+    //       long shiftedIndex = inputStart + j + k;
+    //       long lastOverlapIndex = lastInputStart + outputOffset + k;
+    //       if (shiftedIndex < 0 || shiftedIndex >= inputLength || lastOverlapIndex < 0 || lastOverlapIndex >= inputLength) {
+    //         continue;
+    //       }
+
+    //       sum += input[shiftedIndex] * input[lastOverlapIndex];
     //     }
 
     //     if (j == -maxShift || sum > bestSum) {
@@ -112,18 +121,17 @@ int timeStretch(float *input, int inputLength, float **output, float multiplier)
     //   }
 
     //   inputStart += bestShift;
-    //   outputStart += bestShift;
     // }
 
     lastInputStart = inputStart;
 
     float segment[segmentLength];
     arrayMultiply(input, inputLength, inputStart, window, segmentLength, 0, segment, segmentLength, 0, segmentLength);
-    arrayAdd(segment, segmentLength, 0, *output, outputLength, outputStart, *output, outputLength, outputStart, segmentLength);
-    arrayAdd(window, segmentLength, 0, outputMaxAmp, outputLength, outputStart, outputMaxAmp, outputLength, outputStart, segmentLength);
+    arrayAdd(segment, segmentLength, 0, *output, outputLength, outputStart, segmentLength);
+    arrayAdd(window, segmentLength, 0, outputMaxAmp, outputLength, outputStart, segmentLength);
   }
 
-  for (int i = 0; i < outputLength; i++) {
+  for (long i = 0; i < outputLength; i++) {
     if (outputMaxAmp > 0) {
       (*output)[i] = (*output)[i] / outputMaxAmp[i];
     }
@@ -137,14 +145,14 @@ int timeStretch(float *input, int inputLength, float **output, float multiplier)
   return outputLength;
 }
 
-struct result *repitchAndStretch(float *data, int length, float stretch, int semitones) {
+struct result *repitchAndStretch(float *data, long length, float stretch, int semitones) {
   float multiplier = pow(1.05946, semitones);
 
   float *stretched;
-  int stretchedLength = timeStretch(data, length, &stretched, stretch * multiplier);
+  long stretchedLength = timeStretch(data, length, &stretched, stretch * multiplier);
 
   float *resampled;
-  int resampledLength = resample(stretched, stretchedLength, &resampled, multiplier);
+  long resampledLength = resample(stretched, stretchedLength, &resampled, multiplier);
   free(stretched);
 
   struct result *output = malloc(sizeof(struct result));
@@ -167,8 +175,8 @@ int main(int argc, char *argv[]) {
   char *line = NULL;
   size_t length = 0;
 
-  float data[352800];
-  for (int i = 0; i < 352800; i++) {
+  float data[352800L];
+  for (long i = 0; i < 352800L; i++) {
     getline(&line, &length, inputFile);
     data[i] = atof(line);
   }
@@ -176,9 +184,9 @@ int main(int argc, char *argv[]) {
   free(line);
   fclose(inputFile);
 
-  struct result *result = repitchAndStretch(data, 352800, stretch, semitones);
+  struct result *result = repitchAndStretch(data, 352800L, stretch, semitones);
   FILE *outputFile = fopen("compareCheckC.txt", "w");
-  for (int i = 0; i < result->resultLength; i++) {
+  for (long i = 0; i < result->resultLength; i++) {
     fprintf(outputFile, "%.5f\n", result->resultData[i]);
   }
 
@@ -189,7 +197,7 @@ int main(int argc, char *argv[]) {
   clock_gettime(CLOCK_REALTIME, &startTime);
 
   for (int i = 0; i < repeats; i++) {
-    struct result *res = repitchAndStretch(data, 352800, stretch, semitones);
+    struct result *res = repitchAndStretch(data, 352800L, stretch, semitones);
     freeAllocatedMemory(res);
   }
 
