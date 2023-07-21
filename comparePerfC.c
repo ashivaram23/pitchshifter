@@ -1,3 +1,4 @@
+#include <cblas.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,17 +104,11 @@ long timeStretch(float *input, long inputLength, float **output, float multiplie
     //   long overlapLength = segmentLength - outputOffset;
 
     //   for (long j = -maxShift; j < maxShift; j++) {
-    //     float sum = 0;
-    //     for (long k = 0; k < overlapLength; k++) {
-    //       long shiftedIndex = inputStart + j + k;
-    //       long lastOverlapIndex = lastInputStart + outputOffset + k;
-    //       if (shiftedIndex < 0 || shiftedIndex >= inputLength || lastOverlapIndex < 0 || lastOverlapIndex >= inputLength) {
-    //         continue;
-    //       }
-
-    //       sum += input[shiftedIndex] * input[lastOverlapIndex];
+    //     if (inputStart + j + overlapLength >= inputLength || inputStart + j < 0) {
+    //       continue;
     //     }
-
+        
+    //     float sum = cblas_sdot(overlapLength, &(input[lastInputStart + outputOffset]), 1, &(input[inputStart + j]), 1);
     //     if (j == -maxShift || sum > bestSum) {
     //       bestSum = sum;
     //       bestShift = j;
