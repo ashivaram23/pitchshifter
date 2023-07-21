@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 struct result {
@@ -31,13 +32,30 @@ void fillWindowFunction(float *window, long length) {
   }
 }
 
-void arrayMultiply(float *a, long aStart, float *b, long bStart, float *c, long cStart, long length) {
-  // Basic c = b * a, assume wont go out of bounds
+void copyArray(float *a, float *b, long length) {
+  memcpy(b, a, length);
 }
 
-void arrayAdd(float *a, long aStart, float *b, long bStart, long length) {
-  // Basic b += a, assume wont go out of bounds
-  // Also compare to saxpy performance with a=1 and comment out the rest only if that one is faster (but leave it commented)
+void multiplyArrays(float *a, float *b, float *c, long length) {
+  for (long i = 0; i < length; i++) {
+    c[i] = a[i] * b[i];
+  }
+}
+
+void addArrays(float *a, float *b, float *c, long length) {
+  for (long i = 0; i < length; i++) {
+    c[i] = a[i] + b[i];
+  }
+}
+
+void addScalarToArray(float *a, float x, long length) {
+  for (long i = 0; i < length; i++) {
+    a[i] += x;
+  }
+}
+
+float dotProduct(float *a, float *b, long length) {
+  return cblas_sdot(length, a, 1, b, 1);
 }
 
 long timeStretch(float *input, long inputLength, float **output, float multiplier) {
@@ -57,25 +75,56 @@ long timeStretch(float *input, long inputLength, float **output, float multiplie
   float window[segmentLength];
   fillWindowFunction(window, segmentLength);
 
-  // First segment
-  // Output[0:_] += Input[0:_] * MODIFIEDWindow[]. Can just memory copy the first half into intermediate and only multiply the second
-  // OutputMaxAmp[0:_] += MODIFIEDWindow[]
-  // Last input start = 0 (or maybe just point to the last overlap start)
+  float nextSegment[segmentLength];
+  long halfSegment = segmentLength / 2;
+  copyArray(input, nextSegment, halfSegment);
+  multiplyArrays(input + halfSegment, window + halfSegment, nextSegment + halfSegment, segmentLength - halfSegment);
+  addArrays(nextSegment, *output, *output, segmentLength);
+  addScalarToArray(outputMaxAmp, 1.0, halfSegment);
+  addArrays(window + halfSegment, outputMaxAmp + halfSegment, outputMaxAmp + halfSegment, segmentLength - halfSegment);
 
-  // Middle segments
-  // For i = 1; i < numSeg - 1; i++
-  // Input start and output start = offset*i
-  // Check max shift bounds and find best shift with (skip every 2 or 4) loop and sdot
-  // Output[_:_] += Input[_:_] * Windwow[]
-  // OutputMaxAmp[_:_] += Window[]
-  // Update last input start or overlap start
+  long lastInputStart = 0;
+  long maxShift = 10 * (44100 / 1000);
+  maxShift = maxShift < inputOffset ? maxShift : inputOffset;
 
-  // Last segment
-  // Input start and output start by len - segLen
-  // Output += Input * MODIFIED WINDOW. Can just copy the second half and only multuply the first
-  // Output max amp += MODIFIED window
+  for (long i = 1; i < numSegments - 1; i++) {
+    long inputStart = inputOffset * i;
+    long outputStart = outputOffset * i;
 
-  // Normalize by max amp and clip to 1.0 loop, free max amp, return
+    float bestSum = 0;
+    long bestShift = 0;
+    long shiftHigh = inputStart + segmentLength + maxShift < inputLength ? maxShift : inputLength - segmentLength - inputStart;
+    for (long j = -maxShift; j < shiftHigh; j += 4) {
+      float sum = dotProduct(input + inputStart + j, input + lastInputStart + outputOffset, overlapLength);
+      if (j == -maxShift || sum > bestSum) {
+        bestSum = sum;
+        bestShift = j;
+      }
+    }
+
+    inputStart += bestShift;
+    lastInputStart = inputStart;
+
+    multiplyArrays(input + inputStart, window, nextSegment, segmentLength);
+    addArrays(nextSegment, *output + outputStart, *output + outputStart, segmentLength);
+    addArrays(window, outputMaxAmp + outputStart, outputMaxAmp + outputStart, segmentLength);
+  }
+
+  long inputStart = inputLength - segmentLength;
+  long outputStart = outputLength - segmentLength;
+  multiplyArrays(input + inputStart, window, nextSegment, halfSegment);
+  copyArray(input + inputStart + halfSegment, nextSegment + halfSegment, segmentLength - halfSegment);
+  addArrays(nextSegment, *output + outputStart, *output + outputStart, segmentLength);
+  addArrays(window, outputMaxAmp + outputStart, outputMaxAmp + outputStart, halfSegment);
+  addScalarToArray(outputMaxAmp + outputStart + halfSegment, 1.0, segmentLength - halfSegment);
+
+  for (long i = 0; i < outputLength; i++) {
+    float quotient = outputMaxAmp[i] > 0 ? (*output)[i] / outputMaxAmp[i] : (*output)[i];
+    (*output)[i] = quotient <= 1.0 ? quotient : 1.0;
+  }
+
+  free(outputMaxAmp);
+  return outputLength;
 }
 
 struct result *repitchAndStretch(float *data, long length, float stretch, int semitones) {
