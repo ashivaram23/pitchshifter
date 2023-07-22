@@ -1,4 +1,3 @@
-#include <cblas.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,7 +105,12 @@ void addScalarToArray(float *a, float x, long length) {
  * length -- lengths of arrays
  */
 float dotProduct(float *a, float *b, long length) {
-  return cblas_sdot(length, a, 1, b, 1);
+  float sum = 0;
+  for (long i = 0; i < length; i += 8) {
+    sum += a[i] * b[i];
+  }
+
+  return sum;
 }
 
 /*
@@ -221,7 +225,18 @@ struct result *repitchAndStretch(float *data, long length, float stretch, int se
   struct result *output = malloc(sizeof(struct result));
   output->resultData = resampled;
   output->resultLength = resampledLength;
+
+  free(data);
   return output;
+}
+
+/*
+ * Allocates memory for the user to copy audio input data into from JS.
+ *
+ * length -- number of audio samples in input
+ */
+float *allocateInputMemory(long length) {
+  return calloc(length, sizeof(float));
 }
 
 /*

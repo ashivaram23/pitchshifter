@@ -55,7 +55,13 @@ void addScalarToArray(float *a, float x, long length) {
 }
 
 float dotProduct(float *a, float *b, long length) {
-  return cblas_sdot(length, a, 1, b, 1);
+  float sum = 0;
+  for (long i = 0; i < length; i += 8) {
+    sum += a[i] * b[i];
+  }
+
+  return sum;
+  // return cblas_sdot(length, a, 1, b, 1);
 }
 
 long timeStretch(float *input, long inputLength, float **output, float multiplier) {
