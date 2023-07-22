@@ -1,5 +1,6 @@
 import numpy as np
 import pyaudio
+import scipy.io.wavfile
 
 
 def play(filename):
@@ -35,3 +36,6 @@ differences = np.abs(c_clip - py_clip)
 max_diff = np.max(differences)
 diff_percent = 100 * (differences > 0.02).sum() / len(c_clip)
 print(f"Max difference {max_diff:.2f}, percent >0.02 {diff_percent:.1f}%")
+
+scipy.io.wavfile.write("audioResultC.wav", 44100, c_clip)
+scipy.io.wavfile.write("audioResultPy.wav", 44100, py_clip)

@@ -33,7 +33,7 @@ void fillWindowFunction(float *window, long length) {
 }
 
 void copyArray(float *a, float *b, long length) {
-  memcpy(b, a, length);
+  memcpy(b, a, length * sizeof(float));
 }
 
 void multiplyArrays(float *a, float *b, float *c, long length) {
@@ -59,8 +59,8 @@ float dotProduct(float *a, float *b, long length) {
 }
 
 long timeStretch(float *input, long inputLength, float **output, float multiplier) {
-  long segmentLength = 100 * (44100 / 1000);
-  long outputOffset = 70 * (44100 / 1000);
+  long segmentLength = (100 * 44100) / 1000;
+  long outputOffset = (70 * 44100) / 1000;
   long overlapLength = segmentLength - outputOffset;
 
   long outputLength = (long)(inputLength * multiplier);
@@ -84,7 +84,7 @@ long timeStretch(float *input, long inputLength, float **output, float multiplie
   addArrays(window + halfSegment, outputMaxAmp + halfSegment, outputMaxAmp + halfSegment, segmentLength - halfSegment);
 
   long lastInputStart = 0;
-  long maxShift = 10 * (44100 / 1000);
+  long maxShift = (10 * 44100) / 1000;
   maxShift = maxShift < inputOffset ? maxShift : inputOffset;
 
   for (long i = 1; i < numSegments - 1; i++) {
@@ -120,7 +120,9 @@ long timeStretch(float *input, long inputLength, float **output, float multiplie
 
   for (long i = 0; i < outputLength; i++) {
     float quotient = outputMaxAmp[i] > 0 ? (*output)[i] / outputMaxAmp[i] : (*output)[i];
-    (*output)[i] = quotient <= 1.0 ? quotient : 1.0;
+    quotient = quotient <= 1.0 ? quotient : 1.0;
+    quotient = quotient >= -1.0 ? quotient : -1.0;
+    (*output)[i] = quotient;
   }
 
   free(outputMaxAmp);
