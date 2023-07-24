@@ -1,11 +1,10 @@
 const memory = new WebAssembly.Memory({initial: 256, maximum: 32768});
-const memoryFloat32View = new Float32Array(memory.buffer);
 const importObject = {env: {memory: memory, emscripten_notify_memory_growth: growMemory}};
 const wasmSource = WebAssembly.instantiateStreaming(fetch("repitch.wasm"), importObject);
 
 const audioContext = new AudioContext();
 const playback = document.getElementById("playback");
-let originalAudioArrayBuffer;
+let originalAudioBuffer;
 
 const fileChooser = document.getElementById("file-select");
 fileChooser.addEventListener("change", openFile);
@@ -19,8 +18,10 @@ function openFile(event) {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    originalAudioArrayBuffer = e.target.result;
-    audioContext.decodeAudioData(originalAudioArrayBuffer).then((audioBuffer) => processAudioBuffer(audioBuffer));
+    audioContext.decodeAudioData(e.target.result).then((audioBuffer) => {
+      originalAudioBuffer = audioBuffer;
+      processAudioBuffer(audioBuffer);
+    });
   };
   reader.readAsArrayBuffer(file);
 
@@ -36,11 +37,29 @@ async function processAudioBuffer(audioBuffer) {
     let inputPointer = source.instance.exports.allocateInputMemory(leftChannel.length);
     console.log(inputPointer);
     
-    memoryFloat32View.set(leftChannel, inputPointer / 4);
+    new Float32Array(memory.buffer).set(leftChannel, inputPointer / 4);
     let outputPointer = source.instance.exports.repitchAndStretch(inputPointer, leftChannel.length, timeSlider.value, pitchSlider.value);
     console.log(outputPointer);
-    console.log(new Int32Array(memory.buffer)[outputPointer / 4]);
+    let outputLength = new Int32Array(memory.buffer)[outputPointer / 4];
+    let outputDataPointer = new Int32Array(memory.buffer)[1 + (outputPointer / 4)];
+    console.log(outputLength);
+    console.log(outputDataPointer);
+
+    console.log(new Float32Array(memory.buffer)[outputDataPointer / 4]);
+
+    const outputDataInMemory = new Float32Array(memory.buffer, outputDataPointer, outputLength);
+    const outputDataCopy = new ArrayBuffer(outputLength * 4);
+    new Float32Array(outputDataCopy).set(outputDataInMemory);
+
     source.instance.exports.freeAllocatedMemory(outputPointer); // Comment this out to cause the memory growth errors in console and fix them independently, since those should be prevented regardless, then add this back in
+
+    const bufferSource = audioContext.createBufferSource();
+    let newAudioBuf = audioContext.createBuffer(1, outputLength, 44100);
+    newAudioBuf.copyFromChannel(new Float32Array(outputDataCopy), 0, 0);
+    bufferSource.buffer = newAudioBuf;
+    bufferSource.connect(audioContext.destination);
+    bufferSource.start(audioContext.currentTime);
+    console.log(newAudioBuf);
   });
 }
 
@@ -56,6 +75,7 @@ timeSlider.addEventListener("input", (e) => timeLabel.innerText = timeFormat.for
 timeSlider.addEventListener("change", updateAudio);
 
 function updateAudio() {
+  // DONT do this. Buffer will get "detached" at least on firefox, instead store either before step or after step's _
   if (originalAudioArrayBuffer != undefined) {
     audioContext.decodeAudioData(originalAudioArrayBuffer).then((audioBuffer) => processAudioBuffer(audioBuffer));
     console.log(`${pitchSlider.value}, ${timeSlider.value}`);
