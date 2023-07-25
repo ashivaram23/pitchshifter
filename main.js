@@ -21,11 +21,21 @@ const pitchLabel = document.getElementById("semitones-label");
 pitchSlider.addEventListener("input", (e) => pitchLabel.innerText = pitchSlider.value);
 pitchSlider.addEventListener("change", processAudioBuffer);
 
+// const pitchNumber = document.getElementById("semitones-number");
+
 const timeSlider = document.getElementById("time-stretch");
 const timeLabel = document.getElementById("time-stretch-label");
 const timeFormat = new Intl.NumberFormat("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 timeSlider.addEventListener("input", (e) => timeLabel.innerText = timeFormat.format(timeSlider.value));
 timeSlider.addEventListener("change", processAudioBuffer);
+timeSlider.addEventListener("input", updateCanvas);
+
+const canvas = document.getElementById("visualization");
+const context = canvas.getContext("2d");
+const canvasWidth = 600;
+const canvasHeight = 300;
+setupCanvas();
+updateCanvas();
 
 function openFile(event) {
   const file = fileChooser.files[0];
@@ -90,6 +100,53 @@ async function processAudioBuffer() {
 function growMemory() {
   console.log("memory grow notify");
   // Handle memory growth
+}
+
+function setupCanvas() {
+  canvas.style.width =  `${canvasWidth}px`;
+  canvas.style.height = `${canvasHeight}px`;
+  canvas.width = canvasWidth * window.devicePixelRatio;
+  canvas.height = canvasHeight * window.devicePixelRatio;
+  context.scale(window.devicePixelRatio, window.devicePixelRatio);
+  context.save();
+}
+
+function updateCanvas() {
+  context.restore();
+  context.clearRect(0, 0, canvasWidth, canvasHeight);
+  context.fillStyle = "gray";
+  context.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  const barHeight = 20;
+  const margin = 10;
+  context.fillStyle = "blue";
+  context.fillRect(margin, margin, canvasWidth - 2 * margin, barHeight);
+
+  context.fillStyle = "lightblue";
+  context.strokeStyle = "black";
+
+  const zoom = 1.5;
+  let inputYBase = margin + barHeight + 10;
+  const offset = (70 / timeSlider.value) * zoom;
+  const segmentWidth = 100 * zoom;
+  for (let i = 0; i < 30; i++) {
+    context.fillRect(10 + offset * i, inputYBase, segmentWidth, barHeight);
+    context.strokeRect(10 + offset * i, inputYBase, segmentWidth, barHeight);
+    // inputYBase += mix(0.8, 0.1, i/6) * barHeight;
+    inputYBase += mix(0.2, 1, offset/(80*zoom)) * barHeight;
+  }
+
+  let outputYBase = 140;
+  for (let i = 0; i < 5; i++) {
+    context.fillRect(10 + offset * i, outputYBase, segmentWidth, barHeight);
+    context.strokeRect(10 + offset * i, outputYBase, segmentWidth, barHeight);
+    outputYBase += mix(0.8, 0.1, i/6) * barHeight;
+  }
+}
+
+function mix(start, end, progress) {
+  progress = Math.max(0, Math.min(progress, 1));
+  return start * (1 - progress) + end * progress;
 }
 
 // Next step: make it faster. It works, but when eg try mp3 thats 2 mins long, it takes a second to process, which makes sense but make it faster and TEST it to make sure can see the fastness
