@@ -12,7 +12,21 @@
     .panel {
       margin-top: 10px;
       margin-bottom: 10px;
-      background-color: #dddddd;
+      background-color: #d9dce1;
+      padding: 0px;
+      border-radius: 3px;
+    }
+    button {
+      height: 2em;
+      background-color: #00000020;
+      border: none;
+      margin: 6px;
+      border-radius: 2px;
+      font-family: sans-serif;
+      font-size: 12px;
+    }
+    button:hover {
+      background-color: #00000033;
     }
     p {
       margin: 0;
@@ -26,7 +40,7 @@
   <p>Independently changes an audio clip&rsquo;s pitch and tempo by applying the waveform similarity overlap-add (WSOLA) algorithm.</p>
 
   <div class="panel">
-    <button id="file-button">Load new file</button>
+    <button id="file-button">Load new audio</button>
     <input type="file" id="file-select" accept="audio/*" style="display: none;">
     <span id="filename"></span>
   </div>

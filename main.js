@@ -33,7 +33,7 @@ timeSlider.addEventListener("input", updateCanvas);
 const canvas = document.getElementById("visualization");
 const context = canvas.getContext("2d");
 const canvasWidth = 600;
-const canvasHeight = 300;
+const canvasHeight = 200;
 setupCanvas();
 updateCanvas();
 
@@ -117,36 +117,29 @@ function updateCanvas() {
   context.fillStyle = "gray";
   context.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  const barHeight = 20;
   const margin = 10;
   context.fillStyle = "blue";
-  context.fillRect(margin, margin, canvasWidth - 2 * margin, barHeight);
+  context.fillRect(margin, margin, canvasWidth - 2 * margin, 20);
 
   context.fillStyle = "lightblue";
   context.strokeStyle = "black";
 
+  const barHeight = mix(timeSlider.value, 1, 2.5, 20, 10);
   const zoom = 1.5;
-  let inputYBase = margin + barHeight + 10;
+  let outputYBase = margin + 30;
   const offset = (70 / timeSlider.value) * zoom;
   const segmentWidth = 100 * zoom;
-  for (let i = 0; i < 30; i++) {
-    context.fillRect(10 + offset * i, inputYBase, segmentWidth, barHeight);
-    context.strokeRect(10 + offset * i, inputYBase, segmentWidth, barHeight);
-    // inputYBase += mix(0.8, 0.1, i/6) * barHeight;
-    inputYBase += mix(0.2, 1, offset/(80*zoom)) * barHeight;
-  }
 
-  let outputYBase = 140;
-  for (let i = 0; i < 5; i++) {
-    context.fillRect(10 + offset * i, outputYBase, segmentWidth, barHeight);
-    context.strokeRect(10 + offset * i, outputYBase, segmentWidth, barHeight);
-    outputYBase += mix(0.8, 0.1, i/6) * barHeight;
+  for (let i = 0; i < 25; i++) {
+    context.fillRect(10 + offset * i, outputYBase + barHeight * i, segmentWidth, barHeight);
+    context.strokeRect(10 + offset * i, outputYBase + barHeight * i, segmentWidth, barHeight);
   }
 }
 
-function mix(start, end, progress) {
-  progress = Math.max(0, Math.min(progress, 1));
-  return start * (1 - progress) + end * progress;
+function mix(x, xStart, xEnd, yStart, yEnd) {
+  let xProgress = (x - xStart) / (xEnd - xStart);
+  xProgress = Math.max(0, Math.min(1, xProgress));
+  return yStart * (1 - xProgress) + yEnd * xProgress;
 }
 
 // Next step: make it faster. It works, but when eg try mp3 thats 2 mins long, it takes a second to process, which makes sense but make it faster and TEST it to make sure can see the fastness
