@@ -1,37 +1,29 @@
 // Check that browser supports key features here and add div to dom with message if not
 
+const worker = new Worker("repitchworker.js");
+
 const audioContext = new AudioContext({sampleRate: 44100});
-let originalAudioBuffer;
 let activeAudioBuffer;
 let bufferSource;
 
-const memory = new WebAssembly.Memory({initial: 256, maximum: 32768});
-const importObject = {env: {memory: memory, emscripten_notify_memory_growth: growMemory}};
-const wasmSource = WebAssembly.instantiateStreaming(fetch("repitch.wasm"), importObject);
+const playButton = document.getElementById("play");
+playButton.addEventListener("click", playAudio);
+let originalAudioDuration = 0;
+let currentAudioDuration = 0;
+let currentAudioPosition = 0;
+let lastAudioPlayTime = 0;
+let playing = false;
 
 const fileChooser = document.getElementById("file-select");
 fileChooser.addEventListener("change", openFile);
 document.getElementById("file-button").onclick = (e) => fileChooser.click();
 
-const playButton = document.getElementById("play");
-playButton.addEventListener("click", playAudio);
-let playing = false;
-let currentAudioLength = 0;
-let originalAudioLength = 0;
-let currentAudioPosition = 0;
-let lastAudioPlayTime = 0;
-
-// Maybe have one nice neat currentSettings DICT and reference everything through there
-
-// PROBLEM with sliders -- the idea was to let user type value between steps (only relevant for pitch slider, ie decimal values, and for segment length+overlap sliders integer values between multiples of 10 or 5), but setting the slider value in js automatically sets to nearest step
-// Maybe have to store the value separately and always just update both slider (to closest) and label (and using that in processAudioBuffer instead of slider.value), and/or either somehow mimic step behavior in js without html step
-
 const pitchSlider = document.getElementById("semitones");
 const pitchLabel = document.getElementById("semitones-number");
 pitchLabel.value = pitchSlider.value;
 pitchSlider.addEventListener("input", (e) => pitchLabel.value = pitchSlider.value);
-pitchSlider.addEventListener("change", processAudioBuffer);
 pitchSlider.addEventListener("input", updateCanvas);
+pitchSlider.addEventListener("change", processAudioBuffer);
 // pitchLabel.addEventListener(); validate and check bounds and round and format and update properly, and maybe do checks while typing?, and see which events make sense to use and arent confusing as to when it submits
 
 const timeSlider = document.getElementById("time-stretch");
@@ -39,8 +31,8 @@ const timeLabel = document.getElementById("time-stretch-number");
 const multiplierFormat = new Intl.NumberFormat("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 timeLabel.value = multiplierFormat.format(timeSlider.value);
 timeSlider.addEventListener("input", (e) => timeLabel.value = multiplierFormat.format(timeSlider.value));
-timeSlider.addEventListener("change", processAudioBuffer);
 timeSlider.addEventListener("input", updateCanvas);
+timeSlider.addEventListener("change", processAudioBuffer);
 // timeLabel.addEventListener();
 
 // add warnings in potentially slow individual choices AND COMBINATIONS of choices for these sliders, and also notices for potentially glitch/artifact causing (intended behavior) values and combinations of values
@@ -48,24 +40,24 @@ const segmentLengthSlider = document.getElementById("segment-length");
 const segmentLengthLabel = document.getElementById("segment-length-number");
 segmentLengthLabel.value = segmentLengthSlider.value;
 segmentLengthSlider.addEventListener("input", (e) => segmentLengthLabel.value = segmentLengthSlider.value);
-segmentLengthSlider.addEventListener("change", processAudioBuffer);
 segmentLengthSlider.addEventListener("input", updateCanvas);
+segmentLengthSlider.addEventListener("change", processAudioBuffer);
 // segmentLengthLabel.addEventListener();
 
 const segmentOverlapSlider = document.getElementById("segment-overlap");
 const segmentOverlapLabel = document.getElementById("segment-overlap-number");
 segmentOverlapLabel.value = segmentOverlapSlider.value;
 segmentOverlapSlider.addEventListener("input", (e) => segmentOverlapLabel.value = segmentOverlapSlider.value);
-segmentOverlapSlider.addEventListener("change", processAudioBuffer);
 segmentOverlapSlider.addEventListener("input", updateCanvas);
+segmentOverlapSlider.addEventListener("change", processAudioBuffer);
 // segmentOverlapLabel.addEventListener();
 
 const maxShiftSlider = document.getElementById("max-shift");
 const maxShiftLabel = document.getElementById("max-shift-number");
 maxShiftLabel.value = maxShiftSlider.value;
 maxShiftSlider.addEventListener("input", (e) => maxShiftLabel.value = maxShiftSlider.value);
-maxShiftSlider.addEventListener("change", processAudioBuffer);
 maxShiftSlider.addEventListener("input", updateCanvas);
+maxShiftSlider.addEventListener("change", processAudioBuffer);
 // maxShiftLabel.addEventListener();
 
 const canvas = document.getElementById("visualization");
@@ -93,21 +85,60 @@ function resetAllSettings() {
 }
 
 function openFile(event) { // check length of audio here, either limit to x minutes (like 3-5?) or limit to a slightly higher y minutes (like 5-7?) but also warn for the upper numbers that it will be SLOW and take a LOT of memory
-  toggleInputEnabled(false); // THIS DOESNT WORK RIGHT btw, the timing of it specifically. Also once get it to work within processAudioBuffer, delete it from this function because not needed
   const file = fileChooser.files[0];
   const filenameLabel = document.getElementById("filename");
-  filenameLabel.innerText = file.name; // Why does this update after wasm processing when opening big file? shouldnt this happen first and synchronously? might have to do with the actual dom not updating right away, maybe similar with the input enable issue
+  filenameLabel.innerText = file.name;
 
   const reader = new FileReader();
-  reader.onload = (e) => {
-    audioContext.decodeAudioData(e.target.result).then((audioBuffer) => {
-      originalAudioLength = audioBuffer.duration;
-      originalAudioBuffer = audioBuffer; // Consider not keeping this for memory efficiency purposes... and just read the file every time
-      activeAudioBuffer = audioBuffer;
-      processAudioBuffer();
-    }).then(updateCanvas).then(toggleInputEnabled(true));
-  };
+  reader.onload = async (e) => decodeArrayBuffer().then(updateCanvas).then(processAudioBuffer); // This doesnt work cause cant use audiocontext in web worker, so rewrite code to do the decoding in main and somehow pass that data without expensive copy to worker???
   reader.readAsArrayBuffer(file);
+}
+
+function setupWorkerPromise() {
+  return new Promise((resolve) => {
+    worker.addEventListener("message", function listener(message) {
+      worker.removeEventListener("message", listener);
+      resolve(message.data);
+    });
+  });
+}
+
+async function decodeArrayBuffer() {
+  setInputEnabled(false);
+  const workerPromise = setupWorkerPromise();
+  worker.postMessage({action: "decode", transfer: e.target.result}, [e.target.result]);
+
+  const workerData = await workerPromise;
+  originalAudioDuration = workerData.duration;
+  setInputEnabled(true);
+}
+
+async function processAudioBuffer() {
+  currentAudioPosition = 0;
+  endAudioPlayback();
+
+  if (originalAudioDuration == 0) {
+    return;
+  }
+
+  setInputEnabled(false);
+  document.getElementById("details").innerText = "Processing audio...";
+
+  const workerPromise = setupWorkerPromise();
+  const settings = {stretch: timeSlider.value, semitones: pitchSlider.value, segmentLengthMs: segmentLengthSlider.value, outputOffsetMs: segmentLengthSlider.value - segmentOverlapSlider.value, maxShiftMs: maxShiftSlider.value};
+  worker.postMessage({action: "process", repitchSettings: settings});
+
+  const workerData = await workerPromise;
+  activeAudioBuffer = workerData.transfer;
+  currentAudioDuration = activeAudioBuffer.duration;
+  document.getElementById("playback-length").innerText = secondsToTime(currentAudioDuration);
+
+  const uncompressedSizeBytes = currentAudioLength * activeAudioBuffer.numberOfChannels * 44100 * 4;
+  const uncompressedSizeMB = Math.round(uncompressedSizeBytes / 1e4) / 1e2;
+  document.getElementById("download").innerText = `Download (${uncompressedSizeMB} MB)`;
+  const totalStretch = settings.stretch * Math.pow(1.05946, settings.semitones);
+  document.getElementById("details").innerText = `Input ${Math.round(originalAudioDuration * 100) / 100} sec, time stretched to ${Math.round(originalAudioDuration * totalStretch * 100) / 100} sec, resampled to ${Math.round(currentAudioLength * 100) / 100} sec with ${settings.semitones} semitone shift`;
+  setInputEnabled(true);
 }
 
 function playAudio(event) {
@@ -147,54 +178,7 @@ function endAudioPlayback() {
   }
 }
 
-async function processAudioBuffer() {
-  currentAudioPosition = 0;
-  endAudioPlayback();
-
-  if (originalAudioBuffer == undefined) {
-    return;
-  }
-  toggleInputEnabled(false); // This should gray out, but it's not happening, problem isnt with the function called here, it's something about dom not updating right away synchronously in step even though you would expect it to be ? Also if moving wasm part to new thread happens to stop this behavior, should still probably fix it regardless of that.
-  console.log("Disable");
-
-  await wasmSource.then(source => { 
-    let newAudioBuffer;
-    
-    for (let i = 0; i < originalAudioBuffer.numberOfChannels; i++) { // can this go in new thread/worker (should still gray out the sliders while it works)
-      const channelData = originalAudioBuffer.getChannelData(i);
-      let inputPointer = source.instance.exports.allocateInputMemory(channelData.length);
-      new Float32Array(memory.buffer).set(channelData, inputPointer / 4);
-
-      let outputPointer = source.instance.exports.repitchAndStretch(inputPointer, channelData.length, timeSlider.value, pitchSlider.value, segmentLengthSlider.value, segmentLengthSlider.value - segmentOverlapSlider.value, maxShiftSlider.value);
-      let outputLength = new Int32Array(memory.buffer)[outputPointer / 4];
-      if (newAudioBuffer == undefined) {
-        newAudioBuffer = audioContext.createBuffer(originalAudioBuffer.numberOfChannels, outputLength, 44100);
-      }
-      let outputDataPointer = new Int32Array(memory.buffer)[1 + (outputPointer / 4)];
-
-      const outputDataInMemory = new Float32Array(memory.buffer, outputDataPointer, outputLength);
-      const outputDataCopy = new ArrayBuffer(outputLength * 4);
-      new Float32Array(outputDataCopy).set(outputDataInMemory);
-
-      source.instance.exports.freeAllocatedMemory(outputPointer);
-      newAudioBuffer.copyToChannel(new Float32Array(outputDataCopy), i, 0);
-    } 
-    
-    activeAudioBuffer = newAudioBuffer;
-
-    currentAudioLength = activeAudioBuffer.duration;
-    document.getElementById("playback-length").innerText = secondsToTime(currentAudioLength);
-    const uncompressedSizeBytes = currentAudioLength * activeAudioBuffer.numberOfChannels * 44100 * 4;
-    const uncompressedSizeMB = Math.round(uncompressedSizeBytes / 1e4) / 1e2;
-    document.getElementById("download").innerText = `Download (${uncompressedSizeMB} MB)`;
-    const totalStretch = timeSlider.value * Math.pow(1.05946, pitchSlider.value);
-    document.getElementById("details").innerText = `Input ${Math.round(originalAudioLength*100)/100} sec, time stretched to ${Math.round(originalAudioLength * totalStretch*100)/100} sec, resampled to ${Math.round(currentAudioLength*100)/100} sec with ${pitchSlider.value} semitone shift`;
-  });
-  toggleInputEnabled(true); // Doesnt work, see comments above same reason -- this happens instantaneously after disabling presumably (can even see the blink on firefox), and behavior is no different if keep both enable and disable within the await part btw?? even though thats all supposed to happen synchronously. and something similar when open file, maybe?
-  console.log("Enable"); // This works fine though. so it's probably just about the DOM actually updating after setting value not happening in perfect order. So find a different way
-}
-
-function toggleInputEnabled(enabled) {
+function setInputEnabled(enabled) {
   for (element of document.getElementsByTagName("input")) {
     element.disabled = !enabled;
   }
@@ -206,11 +190,6 @@ function secondsToTime(seconds) {
   let secondsRemainder = wholeSeconds - wholeMinutes * 60;
 
   return `${wholeMinutes}:${secondsRemainder < 10 ? "0" : ""}${secondsRemainder}`;
-}
-
-function growMemory() {
-  console.log("Growing WebAssembly memory");
-  // Handle memory growth
 }
 
 function setupCanvas() {
@@ -253,7 +232,7 @@ function updateCanvas() { // clean this code up massively, also make hover effec
   const outputOffset = segmentLengthSlider.value - segmentOverlapSlider.value;
   const segmentWidth = segmentLengthSlider.value;
 
-  const inputLength = originalAudioLength > 0 ? originalAudioLength * 1000 : (outputOffset * 10 + segmentOverlapSlider.value);
+  const inputLength = originalAudioDuration > 0 ? originalAudioDuration * 1000 : (outputOffset * 10 + segmentOverlapSlider.value);
   const totalStretch = timeSlider.value * Math.pow(1.05946, pitchSlider.value);
   const outputLength = totalStretch * inputLength;
   const numSegments = Math.ceil((outputLength - segmentOverlapSlider.value) / outputOffset);
