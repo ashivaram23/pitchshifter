@@ -25,6 +25,9 @@
       font-family: sans-serif;
       font-size: 12px;
     }
+    input:disabled {
+      background-color: gray;
+    }
     button:hover {
       background-color: #00000033;
     }
@@ -37,7 +40,7 @@
 
 <body>
   <h1>Pitch shifter / time stretcher</h1>
-  <p>Independently changes an audio clip&rsquo;s pitch and tempo by applying the waveform similarity overlap-add (WSOLA) algorithm.</p>
+  <p>Independently changes an audio clip&rsquo;s pitch and tempo by applying the waveform similarity based overlap-add (WSOLA) algorithm.</p>
 
   <div class="panel">
     <button id="file-button">Load new audio</button>
@@ -51,27 +54,43 @@
       <span id="current-playback">0:00</span>
       <input type="range" name="audio-progress" id="audio-progress"/>
       <span id="playback-length">0:00</span>
-      <button>Download</button>
+      <button id="download">Download</button>
     </div>
     <div>
-      <canvas id="visualization" width="600px" height="200px"></canvas>
+      <canvas id="visualization" width="600px" height="160px"></canvas>
+    </div>
+    <p id="details"></p>
+  </div>
+
+  <div class="panel">
+    <div class="slider">
+      <p>Pitch shift (semitones)</p>
+      <input type="range" class="setting" name="semitones" id="semitones" min="-12" max="12" value="0" step="1"/>
+      <input type="text" inputmode="decimal" name="semitones-number" id="semitones-number" value="0"/>
+    </div>
+    <div class="slider">
+      <p>Tempo multiplier</p>
+      <input type="range" class="setting" name="time-stretch" id="time-stretch" min="0.4" max="2.5" value="1" step="0.01"/>
+      <input type="text" inputmode="decimal" name="time-stretch-number" id="time-stretch-number" value="1.00"/>
     </div>
   </div>
 
   <div class="panel">
-    <p>Pitch and time settings</p>
-    <p>
-      <input type="range" class="setting" name="semitones" id="semitones" min="-12" max="12" value="0" step="1"/>
-      <input type="number" name="semitones-number" id="semitones-number" min="-12" max="12" value="0" step="1"/>
-      <label for="semitones" id="semitones-label">0</label>
-    </p>
-    <p>
-      <input type="range" class="setting" name="time-stretch" id="time-stretch" min="0.4" max="2.5" value="1" step="0.01"/>
-      <input type="number" name="time-stretch-number" id="time-stretch-number" min="0.4" max="2.5" value="1.00" step="0.01"/>
-      <label for="time-stretch" id="time-stretch-label">1.00</label>
-    </p>
-    <p>Advanced settings with warning if manually enter glitchy values</p>
-
+    <div class="slider">
+      <p>Segment length (ms)</p>
+      <input type="range" class="setting" name="segment-length" id="segment-length" min="50" max="250" value="100" step="1"/>
+      <input type="text" inputmode="numeric" name="segment-length-number" id="segment-length-number" value="100"/>
+    </div>
+    <div class="slider">
+      <p>Segment overlap in output (ms)</p>
+      <input type="range" class="setting" name="segment-overlap" id="segment-overlap" min="0" max="40" value="30" step="1"/>
+      <input type="text" inputmode="numeric" name="segment-overlap-number" id="segment-overlap-number" value="30"/>
+    </div>
+    <div class="slider">
+      <p>Maximum shift for waveform similarity (ms)</p>
+      <input type="range" class="setting" name="max-shift" id="max-shift" min="0" max="15" value="10" step="1"/>
+      <input type="text" inputmode="numeric" name="max-shift-number" id="max-shift-number" value="10"/>
+    </div>
   </div>
 
   <p>Explanations</p>

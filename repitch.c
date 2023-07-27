@@ -120,11 +120,14 @@ float dotProduct(float *a, float *b, int length) {
  * inputLength -- number of samples in input
  * output -- pointer to store output array
  * multiplier -- multiplier for the audio's duration
+ * segmentLengthMs -- segment length in milliseconds to use for overlap-add
+ * outputOffsetMs -- output offset in milliseconds to use for overlap-add
+ * maxShiftMs -- max shift in milliseconds to use for overlap-add
  */
-int timeStretch(float *input, int inputLength, float **output, float multiplier) {
+int timeStretch(float *input, int inputLength, float **output, float multiplier, int segmentLengthMs, int outputOffsetMs, int maxShiftMs) {
   // Sets size of the segments to split the audio into and the offset between overlapping segments in the output
-  int segmentLength = (100 * 44100) / 1000;
-  int outputOffset = (70 * 44100) / 1000;
+  int segmentLength = (segmentLengthMs * 44100) / 1000;
+  int outputOffset = (outputOffsetMs * 44100) / 1000;
   int overlapLength = segmentLength - outputOffset;
 
   // Calculates the output length and the number of segments needed to fill it
@@ -153,7 +156,7 @@ int timeStretch(float *input, int inputLength, float **output, float multiplier)
   addArrays(window + halfSegment, outputMaxAmp + halfSegment, outputMaxAmp + halfSegment, segmentLength - halfSegment);
 
   int lastInputStart = 0;
-  int maxShift = (10 * 44100) / 1000;
+  int maxShift = (maxShiftMs * 44100) / 1000;
   maxShift = maxShift < inputOffset ? maxShift : inputOffset;
 
   // Copies the middle segments from their input positions to their corresponding output positions
@@ -210,12 +213,15 @@ int timeStretch(float *input, int inputLength, float **output, float multiplier)
  * length -- number of audio samples
  * stretch -- multiplier for the audio's duration
  * semitones -- number of semitones to shift pitch
+ * segmentLengthMs -- segment length in milliseconds to use for overlap-add
+ * outputOffsetMs -- output offset in milliseconds to use for overlap-add
+ * maxShiftMs -- max shift in milliseconds to use for overlap-add
  */
-struct result *repitchAndStretch(float *data, int length, float stretch, int semitones) {
+struct result *repitchAndStretch(float *data, int length, float stretch, float semitones, int segmentLengthMs, int outputOffsetMs, int maxShiftMs) {
   float multiplier = pow(1.05946, semitones);
 
   float *stretched;
-  int stretchedLength = timeStretch(data, length, &stretched, stretch * multiplier);
+  int stretchedLength = timeStretch(data, length, &stretched, stretch * multiplier, segmentLengthMs, outputOffsetMs, maxShiftMs);
 
   float *resampled;
   int resampledLength = resample(stretched, stretchedLength, &resampled, multiplier);
