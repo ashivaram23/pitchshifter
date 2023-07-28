@@ -90,7 +90,7 @@ function openFile(event) { // check length of audio here, either limit to x minu
   filenameLabel.innerText = file.name;
 
   const reader = new FileReader();
-  reader.onload = async (e) => decodeArrayBuffer().then(updateCanvas).then(processAudioBuffer); // This doesnt work cause cant use audiocontext in web worker, so rewrite code to do the decoding in main and somehow pass that data without expensive copy to worker???
+  reader.onload = (e) => decodeArrayBuffer(e.target.result).then(updateCanvas).then(processAudioBuffer).catch((reason) => console.log(reason));
   reader.readAsArrayBuffer(file);
 }
 
@@ -103,13 +103,20 @@ function setupWorkerPromise() {
   });
 }
 
-async function decodeArrayBuffer() {
+async function decodeArrayBuffer(arrayBuffer) {
   setInputEnabled(false);
-  const workerPromise = setupWorkerPromise();
-  worker.postMessage({action: "decode", transfer: e.target.result}, [e.target.result]);
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  originalAudioDuration = audioBuffer.duration;
 
-  const workerData = await workerPromise;
-  originalAudioDuration = workerData.duration;
+  const channelData = []
+  for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+    channelData.push(audioBuffer.getChannelData(i).buffer);
+  }
+
+  const workerPromise = setupWorkerPromise();
+  worker.postMessage({action: "load", channelData: channelData}, channelData);
+
+  await workerPromise;
   setInputEnabled(true);
 }
 
@@ -127,29 +134,37 @@ async function processAudioBuffer() {
   const workerPromise = setupWorkerPromise();
   const settings = {stretch: timeSlider.value, semitones: pitchSlider.value, segmentLengthMs: segmentLengthSlider.value, outputOffsetMs: segmentLengthSlider.value - segmentOverlapSlider.value, maxShiftMs: maxShiftSlider.value};
   worker.postMessage({action: "process", repitchSettings: settings});
-
+  
   const workerData = await workerPromise;
-  activeAudioBuffer = workerData.transfer;
+  if (workerData.transfer.length == 0) {
+    return;
+  }
+
+  const numSamples = workerData.transfer[0].byteLength / 4;
+  activeAudioBuffer = audioContext.createBuffer(workerData.transfer.length, numSamples, 44100);
+  for (let i = 0; i < workerData.transfer.length; i++) {
+    activeAudioBuffer.copyToChannel(new Float32Array(workerData.transfer[i]), i, 0);
+  }
+
   currentAudioDuration = activeAudioBuffer.duration;
   document.getElementById("playback-length").innerText = secondsToTime(currentAudioDuration);
 
-  const uncompressedSizeBytes = currentAudioLength * activeAudioBuffer.numberOfChannels * 44100 * 4;
+  const uncompressedSizeBytes = currentAudioDuration * activeAudioBuffer.numberOfChannels * 44100 * 4;
   const uncompressedSizeMB = Math.round(uncompressedSizeBytes / 1e4) / 1e2;
   document.getElementById("download").innerText = `Download (${uncompressedSizeMB} MB)`;
   const totalStretch = settings.stretch * Math.pow(1.05946, settings.semitones);
-  document.getElementById("details").innerText = `Input ${Math.round(originalAudioDuration * 100) / 100} sec, time stretched to ${Math.round(originalAudioDuration * totalStretch * 100) / 100} sec, resampled to ${Math.round(currentAudioLength * 100) / 100} sec with ${settings.semitones} semitone shift`;
+  document.getElementById("details").innerText = `Input ${Math.round(originalAudioDuration * 100) / 100} s, time stretched to ${Math.round(originalAudioDuration * totalStretch * 100) / 100} s, resampled to ${Math.round(currentAudioDuration * 100) / 100} s with ${settings.semitones} semitone shift`;
   setInputEnabled(true);
 }
 
 function playAudio(event) {
   if (playing) {
     currentAudioPosition += audioContext.currentTime - lastAudioPlayTime;
-    console.log(currentAudioPosition);
     endAudioPlayback();
     return;
   }
 
-  if (originalAudioBuffer == undefined) {
+  if (originalAudioDuration == 0) {
     return;
   }
 
@@ -160,7 +175,7 @@ function playAudio(event) {
   bufferSource = audioContext.createBufferSource();
   bufferSource.buffer = activeAudioBuffer;
   bufferSource.addEventListener("ended", (e) => {
-    console.log("Send ended"); // This randomly fires repeatedly at unexpected times in firefox, fix that!
+    console.log("Playback finished"); // This randomly fires repeatedly at unexpected times in firefox, fix that!
     currentAudioPosition = 0;
     endAudioPlayback();
   });
@@ -203,9 +218,10 @@ function setupCanvas() {
 
 function updateCanvas() { // clean this code up massively, also make hover effect highlight the part in input
   context.restore();
+  context.save();
   context.clearRect(0, 0, canvasWidth, canvasHeight);
-  context.fillStyle = "gray";
-  context.strokeStyle = "lightgray";
+  context.fillStyle = "#363e4a";
+  context.strokeStyle = "#707b84";
   context.fillRect(0, 0, canvasWidth, canvasHeight);
 
   const margin = 10;
@@ -216,7 +232,7 @@ function updateCanvas() { // clean this code up massively, also make hover effec
   const timescaleMax = (canvasWidth - margin) / zoom;
   for (let i = 0; i < timescaleMax; i += 20) {
     const scaleX = margin + i *zoom;
-    context.lineWidth = i % 100 == 0 ? 1.5 : 0.6;
+    context.lineWidth = i % 100 == 0 ? 1.8 : 0.6;
     context.beginPath();
     context.moveTo(scaleX, margin + barHeight);
     context.lineTo(scaleX, canvasHeight);
@@ -225,7 +241,7 @@ function updateCanvas() { // clean this code up massively, also make hover effec
 
   context.lineWidth = 1;
   
-  context.fillStyle = "blue";
+  context.fillStyle = "#00101d";
   context.fillRect(margin, margin, canvasWidth - margin, barHeight); // Label as input
 
   let outputYBase = margin + 25;
@@ -240,29 +256,24 @@ function updateCanvas() { // clean this code up massively, also make hover effec
 
   // what happens to the lines for ones past i=8? maybe need to set i's max based on changing horizontal fit (of input output max!) not constant vertical ie 8. though that would also be REALLY cluttered... also a separate issue, maybe make them more transparent with each next, or dotted or something, or change colors in a non cluttered way
   const maxNumBars = 18;
-  const colors = ["red", "orange", "yellow", "green"]; // replace with a much better set of colors
+  const hslRanges = [[0, 200], [45, 90], [60, 65], [100, 100]]
   for (let i = 0; i < maxNumBars + 1; i++) { 
+    context.setLineDash([]);
     // Label somewhere as output
     const rectX = margin + outputOffset * i * zoom;
-    const rectY = outputYBase + barHeight * i;
-
-    context.strokeStyle = "black";
-    context.fillStyle = "lightblue"
-    context.fillRect(rectX, rectY, segmentWidth * zoom, barHeight);
-    
+    const rectY = outputYBase + barHeight * i; 
     
     const inputX = margin + inputOffset * i * zoom;
     const inputY = margin + (barHeight / 2) + (i % 2 == 0 ? -1 : 1) * 3;
-    // const colorR = Math.floor(interpolate(i, 0, 10, 10, 100));
-    // const colorG = Math.floor(interpolate(i, 0, 10, 255, 200));
-    // const colorB = Math.floor(interpolate(i, 0, 10, 70, 90));
-    // const colorA = Math.floor(interpolate(i, 0, 10, 100, 100));
-    // context.strokeStyle = `rgb(${colorR} ${colorG} ${colorB} / ${colorA}%)`;
-    // context.fillStyle = context.strokeStyle;
-    context.strokeStyle = colors[i % colors.length];
-    context.fillStyle = context.strokeStyle; // if using this approach, obviously make a much nicer looking color set that doesnt clash with anything and doesnt look circus rainbowy and has consistent brightness changes etc. and maybe consider making the output blocks those colors too and their strokes, that would be much neater
-    context.strokeRect(rectX, rectY, segmentWidth * zoom, barHeight);
 
+    const hslValues = hslRanges.map((range) => Math.floor(interpolate(i, 0, maxNumBars, ...range)));
+    context.fillStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3]}%)`;
+    context.strokeStyle = context.fillStyle; 
+    
+    context.fillRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
+    context.strokeRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
+
+    context.setLineDash([2,2]);
     context.beginPath();
     context.moveTo(rectX, rectY);
     context.lineTo(inputX, inputY);
@@ -279,8 +290,19 @@ function updateCanvas() { // clean this code up massively, also make hover effec
   } // add the (always parallel, different angles) lines that go from each output segment to corresponding part in input based on inputOffset calculation. may be a little messy, but user should also be able to hover to highlight an individual segment
   // also add max shift bars in the input lines areas, maybe only when hover if too cluttered? or maybe just a very small uncluttered way of representing that gets clear when hover, just so that change can be shown when sliders since this is the main part of wsola
 
-  context.strokeStyle = "red";
-  context.strokeRect(0, 140, canvasWidth, 20); // make this gradient fading from transparent to background gray? and do same on vertical right side?
+  const fadeBottom = context.createLinearGradient(0, 135, 0, 158);
+  // fadeBottom.addColorStop(0, "#404d5a00");
+  // fadeBottom.addColorStop(1, "#404d5aff");
+  fadeBottom.addColorStop(0, "#363e4a00");
+  fadeBottom.addColorStop(1, "#363e4aff");
+  context.fillStyle = fadeBottom;
+  context.fillRect(0, 130, canvasWidth, 30);
+
+  const fadeRight = context.createLinearGradient(canvasWidth - 25, 0, canvasWidth - 3, 0);
+  fadeRight.addColorStop(0, "#363e4a00");
+  fadeRight.addColorStop(1, "#363e4aff");
+  context.fillStyle = fadeRight;
+  context.fillRect(canvasWidth - 30, 0, canvasWidth, canvasHeight);
 }
 
 function interpolate(x, xStart, xEnd, yStart, yEnd) {
@@ -295,19 +317,25 @@ function interpolate(x, xStart, xEnd, yStart, yEnd) {
 not that any of this will necessarily be done
 --------------------------------------------------
 
+Memory things: now that using web worker, as expected main thread is fine (given that storing uncompressed 32bit audio), but the web worker inflates (grows) and stays at enough to push total over 1 GB memory usage. So consider doing the thing where track and if enough time passed with too huge memory open but the user recently openedd a much smaller file, or something, then TERMINATE and restart the web worker, and check that that actually frees memory on time so that it doesnt make the situation worse, and also make sure to do it not too often but still enough to keep things cleaner, using some metric/logic to determine the right time based on expected user behavior
+
 Checking and adding warnings for browser incompatibility at the start
 
 Check file for under 5 min
 
-Add controls for segment size, max shift, output overlap and update C code to take those, and web interface to properly fit them in
-Maybe slider can have 50-250 ms segments, 0 - 40 overlap, 0 - 15 max shift. Warn at slow values and slow COMBINATIONS of values that it will be slow or inefficient etc where applicable, and also "warn" to expect glitchy result or specific artifacts when user picks glitchy values
+For overlap add special settings, warn at slow values and slow COMBINATIONS of values that it will be slow or inefficient etc where applicable, and also "warn" to expect glitchy result or specific artifacts when user picks glitchy values
 
-Fix/finish the slider and controls interface, properly making the text field and sliders work, properly limiting the values users can select, with possible allowance of eg decimal pitch values by typing in number field but still not out of bounds, etc
+Fix/finish the slider and controls interface, properly making the text field and sliders work, properly limiting the values users can select (with possible allowance of eg decimal pitch values by typing in number field but still not out of bounds, without making slider overwrite it to step?)
 Make everything full and consistent in terms of what can be selected, how everything updates in concert accordingly, what values can be picked and/or entered, etc.
 And whatever code needed to validate inputs, maybe on keypresses or maybe just when enter, etc
 
+CSS for all the sliders and fields and etc, including on different browsers, window sizes etc
+
+Reset buttons properly formatted like in the right corner of a panel, and panel layout generally (if that needs a grid, flex, or something like that)
+
 The entire canvas visualization part. Proper movement and alignment of things, including with different params etc, canvas looks sharp and works smoothly (right proportions and all the complications about width height pixel ratio in the dom and in its own coordinate system etc,,, and then how THAT will work with the responsive resizing in general as mentioned in another item below "hassle parts"), updates and interactive as needed, clearly visualizes the algorithm including maybe with hover or click changes that work with touch too, etc
 All elements of it and looking good including with the cosine windows, the overlaps, the time marks, and the text at the bottom summarizing the stretch and the compensatory resample and how that -->s the end result of x pitch and y tempo change. with nice colors and shapes and proportions that work with the rest of it
+Add cosine windows, hover effect, time bar labels, and input output labels
 
 The playback time bar, making that match up with the playing, making it move consistently (without inefficiently constantly checking hopefully) and sync with the true elapsed time, allowing user to seek and everything consistently changes accordingly including the text labels, which should update every second and stay in sync somehow,,, (and remove the decimal on the total length for consistency)
 Also a return to start button after play
