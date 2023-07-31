@@ -1,6 +1,6 @@
 // Check that browser supports key features here and add div to dom with message if not
 
-const worker = new Worker("repitchworker.js");
+let worker = new Worker("repitchworker.js");
 
 const audioContext = new AudioContext({sampleRate: 44100});
 let activeAudioBuffer;
@@ -18,62 +18,176 @@ const fileChooser = document.getElementById("file-select");
 fileChooser.addEventListener("change", openFile);
 document.getElementById("file-button").onclick = (e) => fileChooser.click();
 
+// ALL THIS CODE IS EXTREMELY MESSY especially the slider/text input controld mess but also including the flex box things in html,, etc,...
+// Should come up with organized way to deal with all the updates, like storing all the values in one place and calling update consistently for all of them because they all ddo the same thing (eg updatecanvas and processaudiobuffer, change vs input, etc same scheme)
+document.getElementById("load-example").onclick = (e) => {
+  document.getElementById("filename").innerText = "example.wav";
+  fetch("example.wav").then((r) => r.arrayBuffer()).then((buffer) => decodeArrayBuffer(buffer)).then(updateCanvas).then(processAudioBuffer).catch((reason) => console.log(reason));
+  e.target.hidden = true;
+  document.getElementById("clear").hidden = false;
+};
+
+document.getElementById("clear").onclick = (e) => {
+  endAudioPlayback();
+  document.getElementById("filename").innerText = "";
+  document.getElementById("details").innerText = "No file selected.";
+  document.getElementById("download").innerText = "Download";
+  document.getElementById("playback-length").innerText = "0:00";
+  activeAudioBuffer = undefined;
+  bufferSource = undefined;
+  originalAudioDuration = 0;
+  currentAudioDuration = 0;
+  currentAudioPosition = 0;
+  lastAudioPlayTime = 0;
+  playing = false;
+  worker.terminate();
+  worker = new Worker("repitchworker.js"); // Do this so that a worker with wasm memory that has grown too large can be discarded (not ideal)
+  // location.reload();
+  e.target.hidden = true;
+  document.getElementById("load-example").hidden = false;
+}
+
 const pitchSlider = document.getElementById("semitones");
 const pitchLabel = document.getElementById("semitones-number");
 pitchLabel.value = pitchSlider.value;
-pitchSlider.addEventListener("input", (e) => pitchLabel.value = pitchSlider.value);
-pitchSlider.addEventListener("input", updateCanvas);
-pitchSlider.addEventListener("change", processAudioBuffer);
-// pitchLabel.addEventListener(); validate and check bounds and round and format and update properly, and maybe do checks while typing?, and see which events make sense to use and arent confusing as to when it submits
+pitchSlider.addEventListener("input", (e) => {
+  pitchSlider.step = 1;
+  pitchSlider.value = Math.round(pitchSlider.value);
+  pitchLabel.value = pitchSlider.value;
+  updateCanvas();
+});
+pitchSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkPitchTimeDefaults();
+});
+pitchLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(pitchLabel.value * 100) / 100;
+  if (newValue < -12 || newValue > 12) {
+    pitchLabel.value = pitchSlider.value;
+    return;
+  }
+
+  pitchSlider.step = 0.01;
+  pitchSlider.value = newValue;
+  pitchLabel.value = newValue;
+  updateCanvas();
+  processAudioBuffer();
+  checkPitchTimeDefaults();
+});
 
 const timeSlider = document.getElementById("time-stretch");
 const timeLabel = document.getElementById("time-stretch-number");
 const multiplierFormat = new Intl.NumberFormat("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 timeLabel.value = multiplierFormat.format(timeSlider.value);
-timeSlider.addEventListener("input", (e) => timeLabel.value = multiplierFormat.format(timeSlider.value));
-timeSlider.addEventListener("input", updateCanvas);
+timeSlider.addEventListener("input", (e) => {
+  timeLabel.value = multiplierFormat.format(timeSlider.value);
+  updateCanvas();
+});
+timeSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkPitchTimeDefaults();
+});
 timeSlider.addEventListener("change", processAudioBuffer);
-// timeLabel.addEventListener();
+timeLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(timeLabel.value * 100) / 100;
+  if (newValue < 0.4 || newValue > 2.5) {
+    timeLabel.value = timeSlider.value;
+    return;
+  }
+
+  timeSlider.value = newValue;
+  timeLabel.value = multiplierFormat.format(newValue);
+  updateCanvas();
+  processAudioBuffer();
+  checkPitchTimeDefaults();
+});
 
 // add warnings in potentially slow individual choices AND COMBINATIONS of choices for these sliders, and also notices for potentially glitch/artifact causing (intended behavior) values and combinations of values
 const segmentLengthSlider = document.getElementById("segment-length");
 const segmentLengthLabel = document.getElementById("segment-length-number");
 segmentLengthLabel.value = segmentLengthSlider.value;
-segmentLengthSlider.addEventListener("input", (e) => segmentLengthLabel.value = segmentLengthSlider.value);
-segmentLengthSlider.addEventListener("input", updateCanvas);
-segmentLengthSlider.addEventListener("change", processAudioBuffer);
-// segmentLengthLabel.addEventListener();
+segmentLengthSlider.addEventListener("input", (e) => {
+  segmentLengthLabel.value = segmentLengthSlider.value;
+  updateCanvas();
+});
+segmentLengthSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkSettingsDefaults();
+});
+segmentLengthLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(segmentLengthLabel.value);
+  if (newValue < 50 || newValue > 250) {
+    segmentLengthLabel.value = segmentLengthSlider.value;
+    return;
+  }
+
+  segmentLengthSlider.value = newValue;
+  segmentLengthLabel.value = newValue;
+  updateCanvas();
+  processAudioBuffer();
+});
 
 const segmentOverlapSlider = document.getElementById("segment-overlap");
 const segmentOverlapLabel = document.getElementById("segment-overlap-number");
 segmentOverlapLabel.value = segmentOverlapSlider.value;
-segmentOverlapSlider.addEventListener("input", (e) => segmentOverlapLabel.value = segmentOverlapSlider.value);
-segmentOverlapSlider.addEventListener("input", updateCanvas);
-segmentOverlapSlider.addEventListener("change", processAudioBuffer);
-// segmentOverlapLabel.addEventListener();
+segmentOverlapSlider.addEventListener("input", (e) => {
+  segmentOverlapLabel.value = segmentOverlapSlider.value;
+  updateCanvas();
+});
+segmentOverlapSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkSettingsDefaults();
+});
+segmentOverlapLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(segmentOverlapLabel.value);
+  if (newValue < 0 || newValue > 40) {
+    segmentOverlapLabel.value = segmentOverlapSlider.value;
+    return;
+  }
+
+  segmentOverlapSlider.value = newValue;
+  segmentOverlapLabel.value = newValue;
+  updateCanvas();
+  processAudioBuffer();
+});
 
 const maxShiftSlider = document.getElementById("max-shift");
 const maxShiftLabel = document.getElementById("max-shift-number");
 maxShiftLabel.value = maxShiftSlider.value;
-maxShiftSlider.addEventListener("input", (e) => maxShiftLabel.value = maxShiftSlider.value);
-maxShiftSlider.addEventListener("input", updateCanvas);
-maxShiftSlider.addEventListener("change", processAudioBuffer);
-// maxShiftLabel.addEventListener();
+maxShiftSlider.addEventListener("input", (e) => {
+  maxShiftLabel.value = maxShiftSlider.value;
+  updateCanvas();
+});
+maxShiftSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkSettingsDefaults();
+});
+maxShiftLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(maxShiftLabel.value);
+  if (newValue < 0 || newValue > 15) {
+    maxShiftLabel.value = maxShiftSlider.value;
+    return;
+  }
 
-const canvas = document.getElementById("visualization");
-const context = canvas.getContext("2d");
-const canvasWidth = 600;
-const canvasHeight = 160;
-setupCanvas();
-updateCanvas();
+  maxShiftSlider.value = newValue;
+  maxShiftLabel.value = newValue;
+  updateCanvas();
+  processAudioBuffer();
+});
 
-function resetAllSettings() {
+document.getElementById("reset-pitch-time").onclick = (e) => {
   pitchSlider.value = 0;
   pitchLabel.value = pitchSlider.value;
 
   timeSlider.value = 1.00;
   timeLabel.value = multiplierFormat.format(timeSlider.value);
+  
+  updateCanvas();
+  processAudioBuffer();
+  e.target.hidden = true;
+};
 
+document.getElementById("reset-settings").onclick = (e) => {
   segmentLengthSlider.value = 100;
   segmentLengthLabel.value = segmentLengthSlider.value;
 
@@ -82,7 +196,37 @@ function resetAllSettings() {
 
   maxShiftSlider.value = 10;
   maxShiftLabel.value = maxShiftSlider.value;
+
+  updateCanvas();
+  processAudioBuffer();
+  e.target.hidden = true;
+};
+
+checkPitchTimeDefaults(); // this could alll be organized much much more neatly
+checkSettingsDefaults();
+
+function checkPitchTimeDefaults() {
+  if (pitchSlider.value != 0 || timeSlider.value != 1.00) {
+    document.getElementById("reset-pitch-time").hidden = false;
+  } else {
+    document.getElementById("reset-pitch-time").hidden = true;
+  }
 }
+
+function checkSettingsDefaults() {
+  if (segmentLengthSlider.value == 100 && segmentOverlapSlider.value == 30 && maxShiftSlider.value == 10) {
+    document.getElementById("reset-settings").hidden = true;
+  } else {
+    document.getElementById("reset-settings").hidden = false;
+  }
+}
+
+const canvas = document.getElementById("visualization");
+const context = canvas.getContext("2d");
+const canvasWidth = 600;
+const canvasHeight = 160;
+setupCanvas();
+updateCanvas();
 
 function openFile(event) { // check length of audio here, either limit to x minutes (like 3-5?) or limit to a slightly higher y minutes (like 5-7?) but also warn for the upper numbers that it will be SLOW and take a LOT of memory
   const file = fileChooser.files[0];
@@ -273,7 +417,7 @@ function updateCanvas() { // clean this code up massively, also make hover effec
     context.fillRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
     context.strokeRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
 
-    context.setLineDash([2,2]);
+    context.setLineDash([]);
     context.beginPath();
     context.moveTo(rectX, rectY);
     context.lineTo(inputX, inputY);
@@ -287,6 +431,21 @@ function updateCanvas() { // clean this code up massively, also make hover effec
     context.beginPath();
     context.arc(inputX + segmentWidth * zoom, inputY, 2, 0, 2 * Math.PI);
     context.fill();
+
+    if (i > 0) {
+      context.strokeStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / 70%)`
+      context.lineWidth = 2;
+      context.setLineDash([1,1]);
+      context.beginPath();
+      context.moveTo(inputX, inputY);
+      context.lineTo(Math.max(inputX - maxShiftSlider.value * zoom, margin), inputY);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(inputX + segmentWidth * zoom, inputY);
+      context.lineTo(inputX + segmentWidth * zoom + maxShiftSlider.value * zoom, inputY);
+      context.stroke();
+      context.lineWidth = 1;
+    }
   } // add the (always parallel, different angles) lines that go from each output segment to corresponding part in input based on inputOffset calculation. may be a little messy, but user should also be able to hover to highlight an individual segment
   // also add max shift bars in the input lines areas, maybe only when hover if too cluttered? or maybe just a very small uncluttered way of representing that gets clear when hover, just so that change can be shown when sliders since this is the main part of wsola
 
@@ -310,64 +469,3 @@ function interpolate(x, xStart, xEnd, yStart, yEnd) {
   xProgress = Math.max(0, Math.min(1, xProgress));
   return yStart * (1 - xProgress) + yEnd * xProgress;
 }
-
-/*
---------------------------------------------------
-"Unfinished"/"todo" things in no particular order
-not that any of this will necessarily be done
---------------------------------------------------
-
-Memory things: now that using web worker, as expected main thread is fine (given that storing uncompressed 32bit audio), but the web worker inflates (grows) and stays at enough to push total over 1 GB memory usage. So consider doing the thing where track and if enough time passed with too huge memory open but the user recently openedd a much smaller file, or something, then TERMINATE and restart the web worker, and check that that actually frees memory on time so that it doesnt make the situation worse, and also make sure to do it not too often but still enough to keep things cleaner, using some metric/logic to determine the right time based on expected user behavior
-
-Checking and adding warnings for browser incompatibility at the start
-
-Check file for under 5 min
-
-For overlap add special settings, warn at slow values and slow COMBINATIONS of values that it will be slow or inefficient etc where applicable, and also "warn" to expect glitchy result or specific artifacts when user picks glitchy values
-
-Fix/finish the slider and controls interface, properly making the text field and sliders work, properly limiting the values users can select (with possible allowance of eg decimal pitch values by typing in number field but still not out of bounds, without making slider overwrite it to step?)
-Make everything full and consistent in terms of what can be selected, how everything updates in concert accordingly, what values can be picked and/or entered, etc.
-And whatever code needed to validate inputs, maybe on keypresses or maybe just when enter, etc
-
-CSS for all the sliders and fields and etc, including on different browsers, window sizes etc
-
-Reset buttons properly formatted like in the right corner of a panel, and panel layout generally (if that needs a grid, flex, or something like that)
-
-The entire canvas visualization part. Proper movement and alignment of things, including with different params etc, canvas looks sharp and works smoothly (right proportions and all the complications about width height pixel ratio in the dom and in its own coordinate system etc,,, and then how THAT will work with the responsive resizing in general as mentioned in another item below "hassle parts"), updates and interactive as needed, clearly visualizes the algorithm including maybe with hover or click changes that work with touch too, etc
-All elements of it and looking good including with the cosine windows, the overlaps, the time marks, and the text at the bottom summarizing the stretch and the compensatory resample and how that -->s the end result of x pitch and y tempo change. with nice colors and shapes and proportions that work with the rest of it
-Add cosine windows, hover effect, time bar labels, and input output labels
-
-The playback time bar, making that match up with the playing, making it move consistently (without inefficiently constantly checking hopefully) and sync with the true elapsed time, allowing user to seek and everything consistently changes accordingly including the text labels, which should update every second and stay in sync somehow,,, (and remove the decimal on the total length for consistency)
-Also a return to start button after play
-And maybe making it not sound abrupt click whenever user pauses or plays, which might involve gain node?
-And making the whole playback part look right like with play pause icons correctly, slider css to look like and be interactable with as if time playback bar
-
-Fun fact "warnings" about what to expect if the user selects weird (but still in bounds of course, nothing else should be possible) values like 0 max shift etc, either for the intended effects like glitchy (cool fun fact), or an actual warning that it may take longer with these values
-Could also allow for a bit extra room for file length eg more than 5 minutes (but not too much more) and just make those higher values have a warning like that/
-
-Behaviors of play pause audio position buffersourcenode etc and how those stop when eg new file loaded or sliders changed, fixing bugs like in firefox ended event, adding a loading grayout while wasm code executing,
-Things happening smoothly, like rearranging so that when change slider the immediate visual changes (resets) happen right away as opposed to after wasm code
-
-Formatting -- all the divs and padding and fonts and margins, etc, all the design elements and slightly rounded corners and so on, and specific css for everything for the buttons and sliders and text inputs and so on, colors, etc
-And then the hassle parts about responsiveness on different window sizes, devices, browsers etc, should it be flexible, should it be based on some window size thing or hardcoded px, how do these css things even work, how should it change when resize, etc
-
-Confirming that this approach to the audio (like storing whole audio buffer and playing it this way etc) makes sense and is the most efficient clean way to do it in the first place, and same checks for the other ways doing things, including smaller things like the organization flow of the js events and so on, or the way handling wasm instance like when do each step, or whether the way copy and make and store arrays is cluttering, etc
-And in general, cleaning up and refactoring the code to be consistent and not have all that clutter of different things
-
-Making the download button work, properly either packing audio buffer to uncompressed wav, or ogg opus compression, writing C code withh libopus or libopusenc for pcm float32 -> opus, and libogg to contain in ogg file (or could just have libavcodec do it all) and making that another wasm module
-At least put the uncompressed size next to or in the download button then
-
-Making the C code (testably) faster and cleaner where possible (including maybe with wasm simd -- but if so, have to take into account how thats supported, and make sure it makes a testable improvement first)
-
-Making the JS more efficient where possible, including more MEMORY efficient, like maybe not storing original buffer and instead rereading from file every time, or (maybe bad idea) killing wasm instance every now and then when new file and excess grown memory not needed and hope it garbage collects, etc
-
-Threads etc: the audiocontext stuff is probably already on a separate thread by default. However the wasm instance running may not be since it seems to block and cause lag, so can put that on a new web worker or however that works
-Separately, if want to, within the c code could also use pthreads for eg the dot product parts if it makes it testably better, and make sure to implement that correctly on the js side too including the security environment things that need to be set etc. And theres also simd to try if it results in testably better performance, keeping in mind browser compatibility in defauly user settings etc.
-
-Explanatory informative explanation text usefully and clearly explaining the things at play here, etc including sources (both for the algorithm and also, separately, about the things in code like if end up adapting that one article's example to save to wav), finalizing the text at the top too
-And in addition, maybe mention a bit about implementation details incl eg problems for user to know like the fact that since this processes whole thing as uncompressed, expect __, or if you select xyz values, expect __
-
-Checking the whole thing for consistency and proper functionality across different browsers and devices including mobile touch etc, both for the code working, working fast, memory usage proper, interaction behavioral smoothly without bugs, accessible, user can click touch properly, and of course visual appearance as intended etc
-
-And all the stuff needed for it to work as an actual site online of course, any finishing touches for code to be final, git things?, etc
-*/
