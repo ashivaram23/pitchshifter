@@ -225,10 +225,15 @@ const canvas = document.getElementById("visualization");
 const context = canvas.getContext("2d");
 const canvasWidth = 600;
 const canvasHeight = 160;
+let mouseX = -1;
+let mouseY = -1;
 setupCanvas();
 updateCanvas();
 
 function openFile(event) { // check length of audio here, either limit to x minutes (like 3-5?) or limit to a slightly higher y minutes (like 5-7?) but also warn for the upper numbers that it will be SLOW and take a LOT of memory
+  document.getElementById("load-example").hidden = true;
+  document.getElementById("clear").hidden = false;
+
   const file = fileChooser.files[0];
   const filenameLabel = document.getElementById("filename");
   filenameLabel.innerText = file.name;
@@ -318,11 +323,7 @@ function playAudio(event) {
 
   bufferSource = audioContext.createBufferSource();
   bufferSource.buffer = activeAudioBuffer;
-  bufferSource.addEventListener("ended", (e) => {
-    console.log("Playback finished"); // This randomly fires repeatedly at unexpected times in firefox, fix that!
-    currentAudioPosition = 0;
-    endAudioPlayback();
-  });
+  bufferSource.addEventListener("ended", playbackEnded);
 
   bufferSource.connect(audioContext.destination);
   bufferSource.start(undefined, currentAudioPosition);
@@ -332,15 +333,25 @@ function endAudioPlayback() {
   playing = false;
   playButton.innerText = "Play";
   if (bufferSource != undefined) {
+    bufferSource.removeEventListener("ended", playbackEnded);
     bufferSource.disconnect(audioContext.destination);
     bufferSource = undefined;
   }
+}
+
+function playbackEnded(event) {
+  console.log("Playback finished");
+  currentAudioPosition = 0;
+  endAudioPlayback();
 }
 
 function setInputEnabled(enabled) {
   for (element of document.getElementsByTagName("input")) {
     element.disabled = !enabled;
   }
+
+  document.getElementById("play").disabled = !enabled;
+  document.getElementById("download").disabled = !enabled;
 }
 
 function secondsToTime(seconds) {
@@ -386,7 +397,7 @@ function updateCanvas() { // clean this code up massively, also make hover effec
   context.lineWidth = 1;
   
   context.fillStyle = "#00101d";
-  context.fillRect(margin, margin, canvasWidth - margin, barHeight); // Label as input
+  context.fillRect(margin, margin, canvasWidth - margin, barHeight);
 
   let outputYBase = margin + 25;
   const outputOffset = segmentLengthSlider.value - segmentOverlapSlider.value;
@@ -398,12 +409,17 @@ function updateCanvas() { // clean this code up massively, also make hover effec
   const numSegments = Math.ceil((outputLength - segmentOverlapSlider.value) / outputOffset);
   const inputOffset = Math.ceil((inputLength - segmentLengthSlider.value) / (numSegments - 1));
 
-  // what happens to the lines for ones past i=8? maybe need to set i's max based on changing horizontal fit (of input output max!) not constant vertical ie 8. though that would also be REALLY cluttered... also a separate issue, maybe make them more transparent with each next, or dotted or something, or change colors in a non cluttered way
   const maxNumBars = 18;
-  const hslRanges = [[0, 200], [45, 90], [60, 65], [100, 100]]
+  let highlightBar = -1;
+  const verticalBar = Math.floor((mouseY - outputYBase) / barHeight);
+  const horizontalBarX = verticalBar * outputOffset * zoom + margin;
+  if (verticalBar >= 0 && verticalBar <= maxNumBars && mouseX >= horizontalBarX && mouseX < horizontalBarX + segmentWidth * zoom && mouseY >= 0 && mouseY < canvasHeight && mouseX >= 0 && mouseX < canvasWidth) {
+    highlightBar = verticalBar;
+  }
+
+  const hslRanges = [[0, 200], [45, 90], [60, 65], [100, 100]];
   for (let i = 0; i < maxNumBars + 1; i++) { 
     context.setLineDash([]);
-    // Label somewhere as output
     const rectX = margin + outputOffset * i * zoom;
     const rectY = outputYBase + barHeight * i; 
     
@@ -411,9 +427,16 @@ function updateCanvas() { // clean this code up massively, also make hover effec
     const inputY = margin + (barHeight / 2) + (i % 2 == 0 ? -1 : 1) * 3;
 
     const hslValues = hslRanges.map((range) => Math.floor(interpolate(i, 0, maxNumBars, ...range)));
+    if (highlightBar >= 0 && highlightBar <= maxNumBars && highlightBar != i) {
+      hslValues[3] = 30;
+    }
     context.fillStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3]}%)`;
     context.strokeStyle = context.fillStyle; 
-    
+
+    if (highlightBar == i) {
+      continue;
+    }
+
     context.fillRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
     context.strokeRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
 
@@ -433,7 +456,7 @@ function updateCanvas() { // clean this code up massively, also make hover effec
     context.fill();
 
     if (i > 0) {
-      context.strokeStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / 70%)`
+      context.strokeStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3] - 30}%)`
       context.lineWidth = 2;
       context.setLineDash([1,1]);
       context.beginPath();
@@ -446,8 +469,40 @@ function updateCanvas() { // clean this code up massively, also make hover effec
       context.stroke();
       context.lineWidth = 1;
     }
-  } // add the (always parallel, different angles) lines that go from each output segment to corresponding part in input based on inputOffset calculation. may be a little messy, but user should also be able to hover to highlight an individual segment
-  // also add max shift bars in the input lines areas, maybe only when hover if too cluttered? or maybe just a very small uncluttered way of representing that gets clear when hover, just so that change can be shown when sliders since this is the main part of wsola
+  } 
+
+  for (let i = 0; i < timescaleMax; i += 100) {
+    const scaleX = margin + i *zoom;
+    // time labels here
+  }
+
+  if (highlightBar >= 0 && highlightBar <= maxNumBars) {
+    // Put input and output label text here
+    const i = highlightBar;
+    context.setLineDash([]);
+    const rectX = margin + outputOffset * i * zoom;
+    const rectY = outputYBase + barHeight * i; 
+    
+    const inputX = margin + inputOffset * i * zoom;
+
+    const hslValues = hslRanges.map((range) => Math.floor(interpolate(i, 0, maxNumBars, ...range)));
+    context.fillStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3]}%)`;
+    context.strokeStyle = context.fillStyle; 
+
+    context.fillRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
+    context.strokeRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
+
+    context.fillRect(inputX, margin + 1, segmentWidth * zoom, barHeight - 2);
+    context.strokeRect(inputX, margin + 1, segmentWidth * zoom, barHeight - 2);
+
+    if (i > 0) {
+      const shiftLeftStart = Math.max(inputX - maxShiftSlider.value * zoom, margin);
+
+      context.fillStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3] - 50}%)`;
+      context.fillRect(shiftLeftStart, margin + 3, inputX - shiftLeftStart, barHeight - 6);
+      context.fillRect(inputX + segmentWidth * zoom, margin + 3, maxShiftSlider.value * zoom, barHeight - 6);  
+    }
+  }
 
   const fadeBottom = context.createLinearGradient(0, 135, 0, 158);
   // fadeBottom.addColorStop(0, "#404d5a00");
@@ -464,8 +519,23 @@ function updateCanvas() { // clean this code up massively, also make hover effec
   context.fillRect(canvasWidth - 30, 0, canvasWidth, canvasHeight);
 }
 
+function drawCanvasBar(i) {
+
+}
+
 function interpolate(x, xStart, xEnd, yStart, yEnd) {
   let xProgress = (x - xStart) / (xEnd - xStart);
   xProgress = Math.max(0, Math.min(1, xProgress));
   return yStart * (1 - xProgress) + yEnd * xProgress;
+}
+
+// canvas.addEventListener("mousedown", updateCanvasMouse);
+canvas.addEventListener("mousemove", updateCanvasMouse);
+canvas.addEventListener("mouseleave", updateCanvasMouse);
+
+function updateCanvasMouse(e) {
+  const bounds = canvas.getBoundingClientRect();
+  mouseX = e.clientX - bounds.x;
+  mouseY = e.clientY - bounds.y;
+  updateCanvas();
 }
