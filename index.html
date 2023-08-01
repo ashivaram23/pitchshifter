@@ -3,13 +3,17 @@
 <html>
 
 <head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet"> 
   <style>
     body {
       width: 600px;
       margin: 0 auto;
-      font-family: sans-serif;
+      font-family: 'Open Sans', sans-serif;
       background-color: #151718;
       color: white;
+      padding-bottom: 100px;
     }
     .panel {
       margin-top: 10px;
@@ -33,7 +37,7 @@
       border: none;
       margin: 6px;
       border-radius: 2px;
-      font-family: sans-serif;
+      font-family: 'Open Sans', sans-serif;
       font-size: 12px;
       color: #edeff3;
       padding: 4px;
@@ -42,14 +46,16 @@
     }
     #description {
       margin-top: 0px;
-      margin-bottom: 25px;
+      margin-bottom: 30px;
     }
     #explanations {
-      margin-top: 25px;
+      margin-top: 35px;
     }
     h1 {
-      margin-top: 20px;
+      margin-top: 30px;
       margin-bottom: 10px;
+      font-weight: 700;
+      font-size: 28px;
     }
     input {
       background-color: #0000006c;
@@ -65,7 +71,12 @@
       padding: 2px;
       padding-left: 4px;
       font-size: 10px;
+      font-family: 'Open Sans', sans-serif;
       border: none;
+    }
+    input[type=range] {
+      appearance: none;
+      height: 8px;
     }
     #details {
       font-size: 12px;
@@ -76,6 +87,16 @@
     }
     p {
       margin: 0;
+      font-size: 14px;
+      font-weight: 400;
+    }
+    h2 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .explain-text {
+      margin-top: 7px;
     }
   </style>
   <script src="main.js" defer></script>
@@ -155,7 +176,12 @@
   </div>
 
   <div id="explanations">
-    <p>Explanations</p>
+    <h2>How this works</h2>
+    <p class="explain-text">Usually, changing the speed of an audio track directly changes its pitch.
+      To make digital audio sound 2x faster, for example, software could resample it by skipping every other sample, squeezing what previously took two seconds (88,200 samples) into one second (44,100 samples). 
+      The effect is to squish the shape of the audio&rsquo;s waveform in half, doubling its frequency and pushing its pitch one octave higher.</p>
+    <p class="explain-text">Images here</p>
+    <p class="explain-text">Special techniques are needed to speed up or slow down audio without altering its pitch—or alter its pitch without affecting time. Many of these work in the frequency domain. The idea is to use the Fourier transform to _________ (finish this)</p>
   </div>
 </body>
 
