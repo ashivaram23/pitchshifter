@@ -21,6 +21,7 @@ document.getElementById("file-button").onclick = (e) => fileChooser.click();
 // ALL THIS CODE IS EXTREMELY MESSY especially the slider/text input controld mess but also including the flex box things in html,, etc,...
 // Should come up with organized way to deal with all the updates, like storing all the values in one place and calling update consistently for all of them because they all ddo the same thing (eg updatecanvas and processaudiobuffer, change vs input, etc same scheme)
 document.getElementById("load-example").onclick = (e) => {
+  document.getElementById("details").innerText = "Loading file...";
   document.getElementById("filename").innerText = "example.wav";
   fetch("example.wav").then((r) => r.arrayBuffer()).then((buffer) => decodeArrayBuffer(buffer)).then(updateCanvas).then(processAudioBuffer).catch((reason) => console.log(reason));
   e.target.hidden = true;
@@ -230,9 +231,14 @@ let mouseY = -1;
 setupCanvas();
 updateCanvas();
 
-function openFile(event) { // check length of audio here, either limit to x minutes (like 3-5?) or limit to a slightly higher y minutes (like 5-7?) but also warn for the upper numbers that it will be SLOW and take a LOT of memory
+function openFile(event) {
+  // Also eg under first panel in small details-size text notcice if upload eg 2-5 minutes
+  // "Audio files longer than a couple minutes can use lots of memory and may take a few seconds to process."
+  // And if longer than 5 minutes maybe just say no
+  
   document.getElementById("load-example").hidden = true;
   document.getElementById("clear").hidden = false;
+  document.getElementById("details").innerText = "Loading file...";
 
   const file = fileChooser.files[0];
   const filenameLabel = document.getElementById("filename");
@@ -517,10 +523,6 @@ function updateCanvas() { // clean this code up massively, also make hover effec
   fadeRight.addColorStop(1, "#363e4aff");
   context.fillStyle = fadeRight;
   context.fillRect(canvasWidth - 30, 0, canvasWidth, canvasHeight);
-}
-
-function drawCanvasBar(i) {
-
 }
 
 function interpolate(x, xStart, xEnd, yStart, yEnd) {
