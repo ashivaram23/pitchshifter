@@ -2,7 +2,10 @@ let originalAudioChannels = []
 
 const memory = new WebAssembly.Memory({initial: 256, maximum: 32768});
 const importObject = {env: {memory: memory, emscripten_notify_memory_growth: notifyMemoryGrowth}};
-const wasmSource = WebAssembly.instantiateStreaming(fetch("repitch.wasm"), importObject);
+const wasmSource = WebAssembly.instantiateStreaming(fetch("repitch-autovec.wasm"), importObject).catch(() => {
+  console.log("Using module without simd");
+  return WebAssembly.instantiateStreaming(fetch("repitch.wasm"), importObject);
+});
 
 onmessage = (message) => {
   if (message.data.action == "load") {
@@ -19,6 +22,7 @@ async function processAudioBuffer(settings) {
     return;
   }
 
+  const startTime = performance.now();
   const source = await wasmSource;
   let newAudioChannels = [];
   
@@ -39,6 +43,7 @@ async function processAudioBuffer(settings) {
     newAudioChannels.push(outputDataCopy);
   }
   
+  console.log(`Returned ${Math.round(newAudioChannels[0].byteLength / (441 * 4)) / 100} s audio in ${Math.round(performance.now() - startTime) / 1000} s`);
   postMessage({action: "process", transfer: newAudioChannels}, newAudioChannels);
 }
 

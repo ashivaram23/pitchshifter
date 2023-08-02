@@ -88,7 +88,6 @@ timeSlider.addEventListener("change", (e) => {
   processAudioBuffer();
   checkPitchTimeDefaults();
 });
-timeSlider.addEventListener("change", processAudioBuffer);
 timeLabel.addEventListener("change", (e) => {
   const newValue = Math.round(timeLabel.value * 100) / 100;
   if (newValue < 0.4 || newValue > 2.5) {
