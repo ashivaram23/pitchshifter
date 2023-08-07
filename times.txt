@@ -1,0 +1,14 @@
+WITH AUTOVEC CHROME
+Returned 159.5 s audio in 0.796 s
+Returned 398.76 s audio in 1.865 s
+Returned 398.76 s audio in 3.054 s
+
+WITHOUT SIMD CHROME
+Returned 159.5 s audio in 0.89 s
+Returned 398.76 s audio in 2.049 s
+Returned 398.76 s audio in 3.661 s
+
+WITH INTRINSICS NO DOT PRODUCT CHROME
+Returned 159.5 s audio in 0.776 s
+Returned 398.76 s audio in 1.836 s
+Returned 398.76 s audio in 3.202 s
