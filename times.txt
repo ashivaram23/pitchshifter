@@ -1,14 +1,133 @@
-WITH AUTOVEC CHROME
-Returned 159.5 s audio in 0.796 s
-Returned 398.76 s audio in 1.865 s
-Returned 398.76 s audio in 3.054 s
+Dot product X/Y means X elements included for every group of Y
+Ratio of total is X/Y, higher is better for audio theoretically but just needs to audibly work
+Skip is Y-X, lower may be better for audio theoretically (?) but again just needs to audibly work, also possibly less important than ratio
 
-WITHOUT SIMD CHROME
+
+
+WITHOUT ANY SIMD, NO SIMD DOT PRODUCT 1/8 CHROME
 Returned 159.5 s audio in 0.89 s
 Returned 398.76 s audio in 2.049 s
 Returned 398.76 s audio in 3.661 s
 
-WITH INTRINSICS NO DOT PRODUCT CHROME
+WITH AUTOVEC, NO SIMD DOT PRODUCT 1/8 CHROME
+Returned 159.5 s audio in 0.796 s
+Returned 398.76 s audio in 1.865 s
+Returned 398.76 s audio in 3.054 s
+
+WITH INTRINSICS, NO SIMD DOT PRODUCT 1/8 CHROME
 Returned 159.5 s audio in 0.776 s
 Returned 398.76 s audio in 1.836 s
 Returned 398.76 s audio in 3.202 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 8/16 CHROME
+Returned 159.5 s audio in 0.654 s
+Returned 398.76 s audio in 1.56 s
+Returned 398.76 s audio in 2.557 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 4/16 CHROME
+Returned 159.5 s audio in 0.561 s
+Returned 398.76 s audio in 1.354 s
+Returned 398.76 s audio in 2.095 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 8/32 CHROME
+Returned 159.5 s audio in 0.519 s
+Returned 398.76 s audio in 1.194 s
+Returned 398.76 s audio in 1.826 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 4/32 CHROME
+Returned 159.5 s audio in 0.456 s
+Returned 398.76 s audio in 1.037 s
+Returned 398.76 s audio in 1.562 s
+
+
+
+WITHOUT ANY SIMD, NO SIMD DOT PRODUCT 1/1 CHROME
+Returned 159.5 s audio in 2.501 s
+Returned 398.76 s audio in 6.165 s
+Returned 398.76 s audio in 11.726 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 4/4 CHROME
+Returned 159.5 s audio in 1.232 s
+Returned 398.76 s audio in 3.006 s
+Returned 398.76 s audio in 5.438 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 8/8 CHROME
+Returned 159.5 s audio in 0.989 s
+Returned 398.76 s audio in 2.387 s
+Returned 398.76 s audio in 4.16 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 16/16 CHROME
+Returned 159.5 s audio in 0.863 s
+Returned 398.76 s audio in 2.1 s
+Returned 398.76 s audio in 3.617 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 32/32 CHROME
+Returned 159.5 s audio in 0.795 s
+Returned 398.76 s audio in 1.927 s
+Returned 398.76 s audio in 3.286 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 64/64 CHROME
+Returned 159.5 s audio in 0.763 s
+Returned 398.76 s audio in 1.79 s
+Returned 398.76 s audio in 3.013 s
+
+
+
+WITH INTRINSICS, SIMD DOT PRODUCT 24/32 CHROME
+Returned 159.5 s audio in 0.711 s
+Returned 398.76 s audio in 1.7 s
+Returned 398.76 s audio in 2.789 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 16/32 CHROME
+Returned 159.5 s audio in 0.703 s
+Returned 398.76 s audio in 1.688 s
+Returned 398.76 s audio in 2.786 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 32/64 CHROME
+Returned 159.5 s audio in 0.578 s
+Returned 398.76 s audio in 1.358 s
+Returned 398.76 s audio in 2.122 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 16/64 CHROME
+Returned 159.5 s audio in 0.481 s
+Returned 398.76 s audio in 1.116 s
+Returned 398.76 s audio in 1.668 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 8/64 CHROME
+Returned 159.5 s audio in 0.452 s
+Returned 398.76 s audio in 0.978 s
+Returned 398.76 s audio in 1.399 s
+
+
+
+WITH INTRINSICS, SIMD DOT PRODUCT 16/64, NUDGE STRIDE 8 (instead of 4) CHROME
+Returned 159.5 s audio in 0.424 s
+Returned 398.76 s audio in 0.961 s
+Returned 398.76 s audio in 1.304 s
+
+WITH INTRINSICS, SIMD DOT PRODUCT 64/64, NUDGE STRIDE 1 (instead of 4) CHROME
+Returned 159.5 s audio in 1.97 s
+Returned 398.76 s audio in 4.857 s
+Returned 398.76 s audio in 9.19 s
+
+^ This seems to be around the max performance calculating for every single sample in both the nudge and the dot product
+Unlike changing the dot product ratio, the nudge stride makes a very clear audible negative impact when it gets too high, so keep that at 4 or 8 at most
+And the dot product can probably afford to be 16/64.
+Ideal settings considering both performance (clearly influenced by clear changes in each of the three values, with the dot product include mattering less (but also mattering less audibly), the dot product stride mattering medium, and the nudge stride mattering the most since outermost loop (but also making the worst impacts audibly)) and audio quality (less clearly influenced, and by different unclear extents from changes in the nudge vs the dot product values, though certain audible difference at extremes of nudge stride, still unclear if heard something slightly different otherwise and in particular for dot product values) might be between 32/64 with nudge stride 4 (less saving) and 16/64 with nudge stride 8 (more saving).
+Unclear if the less saving and more saving options have an audible difference, maybe on some test audio haven't tried yet...
+
+Dot product include -- multiples of 4, less than dot product stride to form a ratio and skip.
+    Audio: Values that cause higher ratios are theoretically better for audio, but the difference between values causing, say, 1/4 ratio and 1/1 ratio are hard to hear. The skip involved in different numbers with the same ratio may also matter, with lower values being theoretically better, but this seems even less clear in audible result so it's mostly being overlooked
+    Performance: Values that cause higher ratios are worse for performance, to a noticeable but slight degree.
+Dot product stride -- multiples of 4, greater than include to form a ratio and skip
+    Audio: See above for ratio and skip considerations
+    Performance: Higher values seem to make a small but noticeable difference up to around 64, which means higher values are strictly better if the ratio is 1 (since audio quality should have no difference) but when the ratio is less, the skip value may or may not come into consideration (couldn't hear anything so far, but unsure)
+Nudge stride -- like skip (higher skip/stride here means lower granularity) but the skip for dot product doesn't seem to matter for audio quality while this matters the most
+    Audio: Higher values can quickly cause noticeable audible flutters, harder to tell a difference between 1 and 4, and maybe 8 is still fine enough, but clearly it deteriorates quickly if you try extreme values like 32 or 128
+    Performance: Higher values are obviously much better for performance (more so than ratio and even more so than denominator of it, ie doubling this makes more change than halving the ratio or doubling the stride with same ratio), but they are impractical after a point anyway due to significantly worse audio
+
+Ideal for audio: 64/64 1
+Range for audio considering performance tradeoff: 32/64 4 to 16/64 8
+
+For now, going with 32/64 and 4 nudge stride is probably good, leaving the no-simd with 1/8 and 4 as before
+Next choice would be 16/64 4, and then 16/64 8

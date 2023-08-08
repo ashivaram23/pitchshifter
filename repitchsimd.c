@@ -113,8 +113,7 @@ void addArrays(float *a, float *b, float *c, int length) {
  * length -- length of array
  */
 void addScalarToArray(float *a, float x, int length) {
-  float xRepeated[4] = {x, x, x, x};
-  v128_t xVec = wasm_v128_load(xRepeated);
+  v128_t xVec = wasm_f32x4_splat(x);
   for (int i = 0; i < 4 * (length / 4); i += 4) {
     v128_t aVec = wasm_v128_load(&a[i]);
     v128_t sums = wasm_f32x4_add(aVec, xVec);
@@ -127,19 +126,29 @@ void addScalarToArray(float *a, float x, int length) {
 }
 
 /*
- * Calculates the dot/inner product of two arrays.
+ * Calculates the dot/inner product of two arrays using 32 in every 64 elements.
  *
  * a -- one of the arrays
  * b -- the other array
  * length -- lengths of arrays
  */
 float dotProduct(float *a, float *b, int length) {
-  float sum = 0;
-  for (int i = 0; i < length; i += 8) {
-    sum += a[i] * b[i];
+  int numInclude = 32;
+  int stride = 64;
+
+  v128_t sumPartsVec = wasm_f32x4_splat(0);
+  for (int i = 0; i < numInclude * (length / numInclude); i += stride) {
+    for (int j = 0; j < numInclude; j += 4) {
+      v128_t aVec = wasm_v128_load(&a[i + j]);
+      v128_t bVec = wasm_v128_load(&b[i + j]);
+      v128_t products = wasm_f32x4_mul(aVec, bVec);
+      sumPartsVec = wasm_f32x4_add(products, sumPartsVec);
+    }
   }
 
-  return sum;
+  float sumParts[4];
+  wasm_v128_store(sumParts, sumPartsVec);
+  return sumParts[0] + sumParts[1] + sumParts[2] + sumParts[3];
 }
 
 /*

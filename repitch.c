@@ -97,15 +97,17 @@ void addScalarToArray(float *a, float x, int length) {
 }
 
 /*
- * Calculates the dot/inner product of two arrays.
+ * Calculates the dot/inner product of two arrays using 1 in every 8 elements.
  *
  * a -- one of the arrays
  * b -- the other array
  * length -- lengths of arrays
  */
 float dotProduct(float *a, float *b, int length) {
+  int stride = 8;
+
   float sum = 0;
-  for (int i = 0; i < length; i += 8) {
+  for (int i = 0; i < length; i += stride) {
     sum += a[i] * b[i];
   }
 

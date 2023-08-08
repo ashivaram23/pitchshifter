@@ -231,6 +231,9 @@ setupCanvas();
 updateCanvas();
 
 function openFile(event) {
+  if (fileChooser.files.length == 0) {
+    return;
+  }
   // Also eg under first panel in small details-size text notcice if upload eg 2-5 minutes
   // "Audio files longer than a couple minutes can use lots of memory and may take a few seconds to process."
   // And if longer than 5 minutes maybe just say no
