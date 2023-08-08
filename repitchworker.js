@@ -2,7 +2,7 @@ let originalAudioChannels = []
 
 const memory = new WebAssembly.Memory({initial: 256, maximum: 32768});
 const importObject = {env: {memory: memory, emscripten_notify_memory_growth: notifyMemoryGrowth}};
-const wasmSource = WebAssembly.instantiateStreaming(fetch("repitch-intrinsics.wasm"), importObject).catch(() => {
+const wasmSource = WebAssembly.instantiateStreaming(fetch("repitchsimd.wasm"), importObject).catch(() => {
   console.log("Using module without simd");
   return WebAssembly.instantiateStreaming(fetch("repitch.wasm"), importObject);
 });
