@@ -34,6 +34,7 @@ document.getElementById("clear").onclick = (e) => {
   document.getElementById("details").innerText = "No file selected.";
   document.getElementById("download").innerText = "Download";
   document.getElementById("playback-length").innerText = "0:00";
+  fileChooser.value = "";
   activeAudioBuffer = undefined;
   bufferSource = undefined;
   originalAudioDuration = 0;
