@@ -131,3 +131,60 @@ Range for audio considering performance tradeoff: 32/64 4 to 16/64 8
 
 For now, going with 32/64 and 4 nudge stride is probably good, leaving the no-simd with 1/8 and 4 as before
 Next choice would be 16/64 4, and then 16/64 8
+
+
+
+Testing with morning mood with (1) first load, (2) time to 2.5, (3) pitch to 12, (4) reset both time and pitch
+All on first load or full reload as the first track chosen except second Safari one to show that it's just weird with the first ones
+
+Safari (no simd support, 1/8 4)
+Returned 159.5 s audio in 5.555 s
+Returned 398.76 s audio in 1.145 s
+Returned 398.76 s audio in 1.858 s
+Returned 159.5 s audio in 0.475 s
+
+Safari (no simd support, 1/8 4) but with warmup from short example file
+Returned 159.5 s audio in 0.507 s
+Returned 398.76 s audio in 1.117 s
+Returned 398.76 s audio in 1.815 s
+Returned 159.5 s audio in 0.411 s
+
+Firefox (simd on, 32/64 4)
+Returned 159.5 s audio in 0.415 s
+Returned 398.76 s audio in 0.956 s
+Returned 398.76 s audio in 1.519 s
+Returned 159.5 s audio in 0.372 s
+
+Firefox (simd off, 1/8 4)
+Returned 159.5 s audio in 0.492 s
+Returned 398.76 s audio in 1.134 s
+Returned 398.76 s audio in 1.953 s
+Returned 159.5 s audio in 0.431 s
+
+Chrome (simd on, 32/64 4)
+Returned 159.5 s audio in 0.568 s
+Returned 398.76 s audio in 1.392 s
+Returned 398.76 s audio in 2.119 s
+Returned 159.5 s audio in 0.533 s
+
+Chrome (simd off, 1/8 4)
+Returned 159.5 s audio in 0.889 s
+Returned 398.76 s audio in 2.183 s
+Returned 398.76 s audio in 3.729 s
+Returned 159.5 s audio in 0.86 s
+
+
+
+Firefox (simd on, 8/32 4)
+Returned 159.5 s audio in 0.33 s
+Returned 398.76 s audio in 0.707 s
+Returned 398.76 s audio in 1.131 s
+Returned 159.5 s audio in 0.287 s
+
+Chrome (simd on, 8/32 4)
+Returned 159.5 s audio in 0.513 s
+Returned 398.76 s audio in 1.2 s
+Returned 398.76 s audio in 1.862 s
+Returned 159.5 s audio in 0.474 s
+
+8/32 4 seems fine, now just check that it's good enough audibly and finalize that

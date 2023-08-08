@@ -164,7 +164,7 @@ maxShiftSlider.addEventListener("change", (e) => {
 });
 maxShiftLabel.addEventListener("change", (e) => {
   const newValue = Math.round(maxShiftLabel.value);
-  if (newValue < 0 || newValue > 15) {
+  if (newValue < 0 || newValue > 10) {
     maxShiftLabel.value = maxShiftSlider.value;
     return;
   }

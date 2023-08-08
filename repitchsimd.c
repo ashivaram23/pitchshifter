@@ -126,15 +126,15 @@ void addScalarToArray(float *a, float x, int length) {
 }
 
 /*
- * Calculates the dot/inner product of two arrays using 32 in every 64 elements.
+ * Calculates the dot/inner product of two arrays using 8 in every 32 elements.
  *
  * a -- one of the arrays
  * b -- the other array
  * length -- lengths of arrays
  */
 float dotProduct(float *a, float *b, int length) {
-  int numInclude = 32;
-  int stride = 64;
+  int numInclude = 8;
+  int stride = 32;
 
   v128_t sumPartsVec = wasm_f32x4_splat(0);
   for (int i = 0; i < numInclude * (length / numInclude); i += stride) {
