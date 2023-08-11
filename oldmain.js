@@ -1,185 +1,186 @@
-// Unfinished:
-// - items marked TODO below (browser compatbility checks, file size checks and notices, extreme settings/sizes performance warning and expected audio artifact notices)
-// - memory things with how the audiobuffer stores and how to prevent unnecessary buildup
-// - big problem on Safari where the very first processing after starting or restarting the web worker takes ultra long, so if user happens to choose a long file first or right after reset, it will take forever
-// - download button
-// - last ui polishes on html side, clean up html structure and names, page title and favicon etc
-// - explanatory text including implementation details/notices to keep in mind (and if time, images as originally intended)
+// Check that browser supports key features here and add div to dom with message if not
 
-
-
-// -----------------------------------------------------------------------------
-// Main setup
-// -----------------------------------------------------------------------------
-
-// TODO: browser compatibility checks
-
-// Sets up web worker for Wasm module
 let worker = new Worker("repitchworker.js");
 
-// Sets up audio context and variables to store audio buffer and source node
 const audioContext = new AudioContext({sampleRate: 44100});
 let activeAudioBuffer;
 let bufferSource;
 
-// Sets up play button and playback tracking variables
 const playButton = document.getElementById("play");
-playButton.onclick = togglePlayback;
-const progressBar = document.getElementById("audio-progress");
-progressBar.onchange = handleUserProgressChange;
-const playback = {playing: false, position: 0, lastPlayTime: 0, lastPausePosition: 0};
-let playbackUpdateInterval;
+playButton.addEventListener("click", playAudio);
 let originalAudioDuration = 0;
 let currentAudioDuration = 0;
+let currentAudioPosition = 0;
+let lastAudioPlayTime = 0;
+let playing = false;
 
-// Sets up file chooser and button to load example
+const audioProgress = document.getElementById("audio-progress");
+let audioProgressInterval;
+
 const fileChooser = document.getElementById("file-select");
-fileChooser.onchange = openFile;
+fileChooser.addEventListener("change", openFile);
 document.getElementById("file-button").onclick = (e) => fileChooser.click();
-document.getElementById("load-example").onclick = loadExampleFile;
 
-// TODO: Add warnings in potentially slow individual choices AND COMBINATIONS of choices for these sliders, and also notices for potentially glitch/artifact causing (intended behavior) values and combinations of values
-
-// Sets up user settings slider for pitch shift
-const pitchSlider = document.getElementById("semitones");
-const pitchLabel = document.getElementById("semitones-number");
-pitchLabel.value = pitchSlider.value;
-pitchLabel.onchange = (e) => applyLabelChange(pitchLabel, pitchSlider, -12, 12, 100, undefined, 0.01);
-pitchSlider.onchange = handleSliderChange;
-pitchSlider.oninput = (e) => {
-  pitchSlider.step = 1;
-  pitchSlider.value = Math.round(pitchSlider.value);
-  pitchLabel.value = pitchSlider.value;
-  updateCanvas();
+// ALL THIS CODE IS EXTREMELY MESSY especially the slider/text input controld mess but also including the flex box things in html,, etc,...
+// Should come up with organized way to deal with all the updates, like storing all the values in one place and calling update consistently for all of them because they all ddo the same thing (eg updatecanvas and processaudiobuffer, change vs input, etc same scheme)
+document.getElementById("load-example").onclick = (e) => {
+  document.getElementById("details").innerText = "Loading file...";
+  document.getElementById("filename").innerText = "example.wav";
+  fetch("example.wav").then((r) => r.arrayBuffer()).then((buffer) => decodeArrayBuffer(buffer)).then(updateCanvas).then(processAudioBuffer).catch((reason) => console.log(reason));
+  e.target.hidden = true;
+  document.getElementById("clear").hidden = false;
 };
 
-// Sets up user settings slider for time stretch
-const timeSlider = document.getElementById("time-stretch");
-const timeLabel = document.getElementById("time-stretch-number");
-const multiplierFormat = new Intl.NumberFormat("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
-timeLabel.value = multiplierFormat.format(timeSlider.value);
-timeLabel.onchange = (e) => applyLabelChange(timeLabel, timeSlider, 0.4, 2.5, 100, multiplierFormat);
-timeSlider.onchange = handleSliderChange;
-timeSlider.oninput = (e) => {
-  timeLabel.value = multiplierFormat.format(timeSlider.value);
-  updateCanvas();
-};
-
-// Sets up user settings slider for segment length
-const segmentLengthSlider = document.getElementById("segment-length");
-const segmentLengthLabel = document.getElementById("segment-length-number");
-segmentLengthLabel.value = segmentLengthSlider.value;
-segmentLengthLabel.onchange = (e) => applyLabelChange(segmentLengthLabel, segmentLengthSlider, 50, 250);
-segmentLengthSlider.onchange = handleSliderChange;
-segmentLengthSlider.oninput = (e) => {
-  segmentLengthLabel.value = segmentLengthSlider.value;
-  updateCanvas();
-};
-
-// Sets up user settings slider for segment overlap
-const segmentOverlapSlider = document.getElementById("segment-overlap");
-const segmentOverlapLabel = document.getElementById("segment-overlap-number");
-segmentOverlapLabel.value = segmentOverlapSlider.value;
-segmentOverlapLabel.onchange = (e) => applyLabelChange(segmentOverlapLabel, segmentOverlapSlider, 0, 40);
-segmentOverlapSlider.onchange = handleSliderChange;
-segmentOverlapSlider.oninput = (e) => {
-  segmentOverlapLabel.value = segmentOverlapSlider.value;
-  updateCanvas();
-};
-
-// Sets up user settings slider for max shift
-const maxShiftSlider = document.getElementById("max-shift");
-const maxShiftLabel = document.getElementById("max-shift-number");
-maxShiftLabel.value = maxShiftSlider.value;
-maxShiftLabel.onchange = (e) => applyLabelChange(maxShiftLabel, maxShiftSlider, 0, 10);
-maxShiftSlider.onchange = handleSliderChange;
-maxShiftSlider.oninput = (e) => {
-  maxShiftLabel.value = maxShiftSlider.value;
-  updateCanvas();
-};
-
-// Sets up event handling for reset buttons
-document.getElementById("clear").onclick = resetAudio;
-document.getElementById("reset-pitch-time").onclick = resetPitchTimeSettings;
-document.getElementById("reset-settings").onclick = resetOverlapAddSettings;
-checkPitchTimeDefaults();
-checkOverlapAddDefaults();
-
-// Sets up canvas and mouse movement tracking
-const canvas = document.getElementById("visualization");
-const context = canvas.getContext("2d");
-const canvasWidth = 600;
-const canvasHeight = 160;
-let mouseX = -1;
-let mouseY = -1;
-canvas.onmousemove = updateCanvasMouse;
-canvas.onmouseleave = updateCanvasMouse;
-setupCanvas();
-updateCanvas();
-
-
-
-// -----------------------------------------------------------------------------
-// User settings functions
-// -----------------------------------------------------------------------------
-
-// Checks and applies changes to text labels for settings sliders
-function applyLabelChange(settingLabel, settingSlider, limitLow, limitHigh, roundFactor, labelFormat, sliderStep) {
-  roundFactor = roundFactor == undefined ? 1 : roundFactor;
-  const newValue = Math.round(settingLabel.value * roundFactor) / roundFactor;
-  if (newValue < limitLow || newValue > limitHigh) {
-    settingLabel.value = settingSlider.value;
-    return;
-  }
-
-  if (sliderStep != undefined) {
-    settingSlider.step = sliderStep;
-  }
-  
-  settingSlider.value = newValue;
-  settingLabel.value = labelFormat == undefined ? newValue : labelFormat.format(newValue);
-  updateCanvas();
-  processAudioBuffer();
-
-  checkPitchTimeDefaults();
-  checkOverlapAddDefaults();
-}
-
-// Handles changes in settings sliders
-function handleSliderChange(e) {
-  processAudioBuffer();
-  checkPitchTimeDefaults();
-  checkOverlapAddDefaults();
-}
-
-// Resets the audio to the "no file selected" state and restarts the web worker
-function resetAudio(e) {
-  stopPlayback();
-  playback.position = 0;
-  playback.lastPlayTime = 0;
-  playback.lastPausePosition = 0;
-  updatePlaybackProgress();
-
+document.getElementById("clear").onclick = (e) => {
+  endAudioPlayback();
   document.getElementById("filename").innerText = "";
   document.getElementById("details").innerText = "No file selected.";
   document.getElementById("download").innerText = "Download";
   document.getElementById("playback-length").innerText = "0:00";
   fileChooser.value = "";
-
   activeAudioBuffer = undefined;
   bufferSource = undefined;
   originalAudioDuration = 0;
   currentAudioDuration = 0;
-
+  currentAudioPosition = 0;
+  lastAudioPlayTime = 0;
+  audioProgress.value = 0;
+  playing = false;
   worker.terminate();
-  worker = new Worker("repitchworker.js");
-
+  worker = new Worker("repitchworker.js"); // Do this so that a worker with wasm memory that has grown too large can be discarded (not ideal)
+  // location.reload();
   e.target.hidden = true;
   document.getElementById("load-example").hidden = false;
 }
 
-// Resets the sliders in the first settings panel
-function resetPitchTimeSettings() {
+const pitchSlider = document.getElementById("semitones");
+const pitchLabel = document.getElementById("semitones-number");
+pitchLabel.value = pitchSlider.value;
+pitchSlider.addEventListener("input", (e) => {
+  pitchSlider.step = 1;
+  pitchSlider.value = Math.round(pitchSlider.value);
+  pitchLabel.value = pitchSlider.value;
+  updateCanvas();
+});
+pitchSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkPitchTimeDefaults();
+});
+pitchLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(pitchLabel.value * 100) / 100;
+  if (newValue < -12 || newValue > 12) {
+    pitchLabel.value = pitchSlider.value;
+    return;
+  }
+
+  pitchSlider.step = 0.01;
+  pitchSlider.value = newValue;
+  pitchLabel.value = newValue;
+  updateCanvas();
+  processAudioBuffer();
+  checkPitchTimeDefaults();
+});
+
+const timeSlider = document.getElementById("time-stretch");
+const timeLabel = document.getElementById("time-stretch-number");
+const multiplierFormat = new Intl.NumberFormat("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+timeLabel.value = multiplierFormat.format(timeSlider.value);
+timeSlider.addEventListener("input", (e) => {
+  timeLabel.value = multiplierFormat.format(timeSlider.value);
+  updateCanvas();
+});
+timeSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkPitchTimeDefaults();
+});
+timeLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(timeLabel.value * 100) / 100;
+  if (newValue < 0.4 || newValue > 2.5) {
+    timeLabel.value = timeSlider.value;
+    return;
+  }
+
+  timeSlider.value = newValue;
+  timeLabel.value = multiplierFormat.format(newValue);
+  updateCanvas();
+  processAudioBuffer();
+  checkPitchTimeDefaults();
+});
+
+// add warnings in potentially slow individual choices AND COMBINATIONS of choices for these sliders, and also notices for potentially glitch/artifact causing (intended behavior) values and combinations of values
+const segmentLengthSlider = document.getElementById("segment-length");
+const segmentLengthLabel = document.getElementById("segment-length-number");
+segmentLengthLabel.value = segmentLengthSlider.value;
+segmentLengthSlider.addEventListener("input", (e) => {
+  segmentLengthLabel.value = segmentLengthSlider.value;
+  updateCanvas();
+});
+segmentLengthSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkSettingsDefaults();
+});
+segmentLengthLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(segmentLengthLabel.value);
+  if (newValue < 50 || newValue > 250) {
+    segmentLengthLabel.value = segmentLengthSlider.value;
+    return;
+  }
+
+  segmentLengthSlider.value = newValue;
+  segmentLengthLabel.value = newValue;
+  updateCanvas();
+  processAudioBuffer();
+});
+
+const segmentOverlapSlider = document.getElementById("segment-overlap");
+const segmentOverlapLabel = document.getElementById("segment-overlap-number");
+segmentOverlapLabel.value = segmentOverlapSlider.value;
+segmentOverlapSlider.addEventListener("input", (e) => {
+  segmentOverlapLabel.value = segmentOverlapSlider.value;
+  updateCanvas();
+});
+segmentOverlapSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkSettingsDefaults();
+});
+segmentOverlapLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(segmentOverlapLabel.value);
+  if (newValue < 0 || newValue > 40) {
+    segmentOverlapLabel.value = segmentOverlapSlider.value;
+    return;
+  }
+
+  segmentOverlapSlider.value = newValue;
+  segmentOverlapLabel.value = newValue;
+  updateCanvas();
+  processAudioBuffer();
+});
+
+const maxShiftSlider = document.getElementById("max-shift");
+const maxShiftLabel = document.getElementById("max-shift-number");
+maxShiftLabel.value = maxShiftSlider.value;
+maxShiftSlider.addEventListener("input", (e) => {
+  maxShiftLabel.value = maxShiftSlider.value;
+  updateCanvas();
+});
+maxShiftSlider.addEventListener("change", (e) => {
+  processAudioBuffer();
+  checkSettingsDefaults();
+});
+maxShiftLabel.addEventListener("change", (e) => {
+  const newValue = Math.round(maxShiftLabel.value);
+  if (newValue < 0 || newValue > 10) {
+    maxShiftLabel.value = maxShiftSlider.value;
+    return;
+  }
+
+  maxShiftSlider.value = newValue;
+  maxShiftLabel.value = newValue;
+  updateCanvas();
+  processAudioBuffer();
+});
+
+document.getElementById("reset-pitch-time").onclick = (e) => {
   pitchSlider.value = 0;
   pitchLabel.value = pitchSlider.value;
 
@@ -188,10 +189,10 @@ function resetPitchTimeSettings() {
   
   updateCanvas();
   processAudioBuffer();
-}
+  e.target.hidden = true;
+};
 
-// Resets the sliders in the second settings panel
-function resetOverlapAddSettings() {
+document.getElementById("reset-settings").onclick = (e) => {
   segmentLengthSlider.value = 100;
   segmentLengthLabel.value = segmentLengthSlider.value;
 
@@ -204,9 +205,11 @@ function resetOverlapAddSettings() {
   updateCanvas();
   processAudioBuffer();
   e.target.hidden = true;
-}
+};
 
-// Checks if the first settings panel is at its default settings
+checkPitchTimeDefaults(); // this could alll be organized much much more neatly
+checkSettingsDefaults();
+
 function checkPitchTimeDefaults() {
   if (pitchSlider.value != 0 || timeSlider.value != 1.00) {
     document.getElementById("reset-pitch-time").hidden = false;
@@ -215,8 +218,7 @@ function checkPitchTimeDefaults() {
   }
 }
 
-// Checks if the second settings panel is at its default settings
-function checkOverlapAddDefaults() {
+function checkSettingsDefaults() {
   if (segmentLengthSlider.value == 100 && segmentOverlapSlider.value == 30 && maxShiftSlider.value == 10) {
     document.getElementById("reset-settings").hidden = true;
   } else {
@@ -224,20 +226,20 @@ function checkOverlapAddDefaults() {
   }
 }
 
+const canvas = document.getElementById("visualization");
+const context = canvas.getContext("2d");
+const canvasWidth = 600;
+const canvasHeight = 160;
+let mouseX = -1;
+let mouseY = -1;
+setupCanvas();
+updateCanvas();
 
-
-// -----------------------------------------------------------------------------
-// Audio file processing functions
-// -----------------------------------------------------------------------------
-
-// Handles the file chooser's onchange event
-function openFile(e) {
+function openFile(event) {
   if (fileChooser.files.length == 0) {
     return;
   }
-
-  // TODO:
-  // Add notice under first panel in small details-size text if upload eg 2-5 minutes
+  // Also eg under first panel in small details-size text notcice if upload eg 2-5 minutes
   // "Audio files longer than a couple minutes can use lots of memory and may take a few seconds to process."
   // And if longer than 5 minutes maybe just say no
   
@@ -254,16 +256,6 @@ function openFile(e) {
   reader.readAsArrayBuffer(file);
 }
 
-// Handles the example load button's onclick event
-function loadExampleFile(e) {
-  document.getElementById("details").innerText = "Loading file...";
-  document.getElementById("filename").innerText = "example.wav";
-  fetch("example.wav").then((r) => r.arrayBuffer()).then((buffer) => decodeArrayBuffer(buffer)).then(updateCanvas).then(processAudioBuffer).catch((reason) => console.log(reason));
-  e.target.hidden = true;
-  document.getElementById("clear").hidden = false;
-}
-
-// Returns a promise that resolves upon receiving a message from the worker
 function setupWorkerPromise() {
   return new Promise((resolve) => {
     worker.addEventListener("message", function listener(message) {
@@ -273,17 +265,6 @@ function setupWorkerPromise() {
   });
 }
 
-// Enables or disables input elements on the page
-function setInputEnabled(enabled) {
-  for (element of document.getElementsByTagName("input")) {
-    element.disabled = !enabled;
-  }
-
-  document.getElementById("play").disabled = !enabled;
-  document.getElementById("download").disabled = !enabled;
-}
-
-// Decodes the contents of an audio file and sends audio PCM data to the worker
 async function decodeArrayBuffer(arrayBuffer) {
   setInputEnabled(false);
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -301,13 +282,9 @@ async function decodeArrayBuffer(arrayBuffer) {
   setInputEnabled(true);
 }
 
-// Directs worker to repitch audio according to the page's current settings
 async function processAudioBuffer() {
-  playback.position = 0;
-  playback.lastPlayTime = 0;
-  playback.lastPausePosition = 0;
-  updatePlaybackProgress();
-  stopPlayback();
+  currentAudioPosition = 0;
+  endAudioPlayback();
 
   if (originalAudioDuration == 0) {
     return;
@@ -340,22 +317,12 @@ async function processAudioBuffer() {
   const totalStretch = settings.stretch * Math.pow(1.05946, settings.semitones);
   document.getElementById("details").innerText = `Input ${Math.round(originalAudioDuration * 100) / 100} s, time stretched to ${Math.round(originalAudioDuration * totalStretch * 100) / 100} s, resampled to ${Math.round(currentAudioDuration * 100) / 100} s with ${settings.semitones} semitone shift`;
   setInputEnabled(true);
-  updatePlaybackProgress();
 }
 
-
-
-// -----------------------------------------------------------------------------
-// Playback functions
-// -----------------------------------------------------------------------------
-
-// Plays or pauses the active audio buffer
-function togglePlayback() {
-  if (playback.playing) {
-    playback.lastPausePosition += audioContext.currentTime - playback.lastPlayTime;
-    playback.position = playback.lastPausePosition;
-    stopPlayback();
-    updatePlaybackProgress();
+function playAudio(event) {
+  if (playing) {
+    currentAudioPosition += audioContext.currentTime - lastAudioPlayTime;
+    endAudioPlayback();
     return;
   }
 
@@ -363,64 +330,65 @@ function togglePlayback() {
     return;
   }
 
+  playing = true;
   playButton.innerText = "Pause";
-  playback.playing = true;
-  playback.lastPlayTime = audioContext.currentTime;
+  lastAudioPlayTime = audioContext.currentTime;
 
   bufferSource = audioContext.createBufferSource();
   bufferSource.buffer = activeAudioBuffer;
-  bufferSource.addEventListener("ended", signalPlaybackEnded);
+  bufferSource.addEventListener("ended", playbackEnded);
 
   bufferSource.connect(audioContext.destination);
-  bufferSource.start(undefined, playback.lastPausePosition);
+  bufferSource.start(undefined, currentAudioPosition);
 
-  if (playbackUpdateInterval != undefined) {
-    clearInterval(playbackUpdateInterval);
-    playbackUpdateInterval = undefined;
+  if (audioProgressInterval != undefined) {
+    clearInterval(audioProgressInterval);
+    audioProgressInterval = undefined;
   }
-
-  playbackUpdateInterval = setInterval(updatePlaybackProgress, 200);
+  audioProgressInterval = setInterval(updateAudioProgress, 200);
 }
 
-// Stops a playing buffer source
-function stopPlayback() {
+function endAudioPlayback() {
+  playing = false;
   playButton.innerText = "Play";
-  playback.playing = false;
-
   if (bufferSource != undefined) {
-    bufferSource.removeEventListener("ended", signalPlaybackEnded);
+    bufferSource.removeEventListener("ended", playbackEnded);
     bufferSource.disconnect(audioContext.destination);
     bufferSource = undefined;
   }
 
-  if (playbackUpdateInterval != undefined) {
-    clearInterval(playbackUpdateInterval);
-    playbackUpdateInterval = undefined;
+  if (audioProgressInterval != undefined) {
+    clearInterval(audioProgressInterval);
+    audioProgressInterval = undefined;
   }
 }
 
-// Updates the playback timestamp and progress bar on the page
-function updatePlaybackProgress() {
-  const playedTime = playback.playing ? audioContext.currentTime - playback.lastPlayTime : 0;
-  playback.position = playback.lastPausePosition + playedTime;
+function updateAudioProgress() {
+  if (originalAudioDuration == 0) {
+    return;
+  }
 
-  progressBar.value = currentAudioDuration == 0 ? 0 : Math.round(100 * playback.position / currentAudioDuration);
-  document.getElementById("current-playback").innerText = secondsToTime(playback.position);
+  const seconds = currentAudioPosition + audioContext.currentTime - lastAudioPlayTime;
+  audioProgress.value = Math.ceil(100 * (seconds) / currentAudioDuration);
+  document.getElementById("current-playback").innerText = secondsToTime(seconds);
 }
 
-// Handles the onended event from a playing buffer source
-function signalPlaybackEnded() {
+function playbackEnded(event) {
+  audioProgress.value = 100;
   console.log("Playback finished");
-
-  updatePlaybackProgress();
-  playback.position = 0;
-  playback.lastPlayTime = 0;
-  playback.lastPausePosition = 0;
-
-  stopPlayback();
+  currentAudioPosition = 0;
+  endAudioPlayback();
 }
 
-// Creates a formatted timestamp from a number of seconds
+function setInputEnabled(enabled) {
+  for (element of document.getElementsByTagName("input")) {
+    element.disabled = !enabled;
+  }
+
+  document.getElementById("play").disabled = !enabled;
+  document.getElementById("download").disabled = !enabled;
+}
+
 function secondsToTime(seconds) {
   let wholeSeconds = Math.round(seconds);
   let wholeMinutes = Math.floor(wholeSeconds / 60);
@@ -429,28 +397,6 @@ function secondsToTime(seconds) {
   return `${wholeMinutes}:${secondsRemainder < 10 ? "0" : ""}${secondsRemainder}`;
 }
 
-// Handles user changes to the progress bar slider's value
-function handleUserProgressChange(e) {
-  stopPlayback();
-  playback.playing = false;
-  playback.position = currentAudioDuration * (progressBar.value / 100);
-  playback.lastPlayTime = 0;
-  playback.lastPausePosition = playback.position;
-  updatePlaybackProgress();
-
-  if (progressBar.value == 100) {
-    playback.position = 0;
-    playback.lastPausePosition = 0;
-  }
-}
-
-
-
-// -----------------------------------------------------------------------------
-// Canvas functions
-// -----------------------------------------------------------------------------
-
-// Initializes canvas width and height
 function setupCanvas() {
   canvas.style.width =  `${canvasWidth}px`;
   canvas.style.height = `${canvasHeight}px`;
@@ -460,13 +406,12 @@ function setupCanvas() {
   context.save();
 }
 
-// Redraws canvas
-function updateCanvas() {
+function updateCanvas() { // clean this code up massively, also make hover effect highlight the part in input
   context.restore();
   context.save();
-
   context.clearRect(0, 0, canvasWidth, canvasHeight);
   context.fillStyle = "#363e4a";
+  context.strokeStyle = "#707b84";
   context.fillRect(0, 0, canvasWidth, canvasHeight);
 
   const margin = 10;
@@ -475,7 +420,6 @@ function updateCanvas() {
   const numBarsFitting = canvasWidth / (segmentLengthSlider.value - segmentOverlapSlider.value);
   const zoom = interpolate(numBarsFitting, 12, 60, 1.2, 2.6);
   const timescaleMax = (canvasWidth - margin) / zoom;
-  context.strokeStyle = "#707b84";
   for (let i = 0; i < timescaleMax; i += 20) {
     const scaleX = margin + i *zoom;
     context.lineWidth = i % 100 == 0 ? 1.8 : 0.6;
@@ -486,6 +430,7 @@ function updateCanvas() {
   }
 
   context.lineWidth = 1;
+  
   context.fillStyle = "#00101d";
   context.fillRect(margin, margin, canvasWidth - margin, barHeight);
 
@@ -494,7 +439,6 @@ function updateCanvas() {
     context.fillStyle = "#a0abb4";
     context.textBaseline = "middle";
     context.textAlign = "start";
-
     for (let j = 0; j < timescaleMax; j += 100) {
       const scaleX = margin + j *zoom;
       context.fillText(`${j} ms`, scaleX, 138);
@@ -522,12 +466,10 @@ function updateCanvas() {
 
   const hslRanges = [[0, 200], [45, 90], [60, 65], [100, 100]];
   for (let i = 0; i < maxNumBars + 1; i++) { 
-    if (i == highlightBar) {
-      continue;
-    }
-
+    context.setLineDash([]);
     const rectX = margin + outputOffset * i * zoom;
-    const rectY = outputYBase + barHeight * i;
+    const rectY = outputYBase + barHeight * i; 
+    
     const inputX = margin + inputOffset * i * zoom;
     const inputY = margin + (barHeight / 2) + (i % 2 == 0 ? -1 : 1) * 3;
 
@@ -535,12 +477,17 @@ function updateCanvas() {
     if (highlightBar >= 0 && highlightBar <= maxNumBars && highlightBar != i) {
       hslValues[3] = 30;
     }
-
     context.fillStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3]}%)`;
-    context.strokeStyle = context.fillStyle;
+    context.strokeStyle = context.fillStyle; 
+
+    if (highlightBar == i) {
+      continue;
+    }
+
     context.fillRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
     context.strokeRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
 
+    context.setLineDash([]);
     context.beginPath();
     context.moveTo(rectX, rectY);
     context.lineTo(inputX, inputY);
@@ -559,7 +506,6 @@ function updateCanvas() {
       context.strokeStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3] - 30}%)`
       context.lineWidth = 2;
       context.setLineDash([1,1]);
-
       context.beginPath();
       context.moveTo(inputX, inputY);
       context.lineTo(Math.max(inputX - maxShiftSlider.value * zoom, margin), inputY);
@@ -568,30 +514,32 @@ function updateCanvas() {
       context.moveTo(inputX + segmentWidth * zoom, inputY);
       context.lineTo(inputX + segmentWidth * zoom + maxShiftSlider.value * zoom, inputY);
       context.stroke();
-
       context.lineWidth = 1;
-      context.setLineDash([]);
     }
-  }
+  } 
 
   if (highlightBar >= 0 && highlightBar <= maxNumBars) {
-    const barIndex = highlightBar;
+    // Put input and output label text here
+    const i = highlightBar;
+    context.setLineDash([]);
+    const rectX = margin + outputOffset * i * zoom;
+    const rectY = outputYBase + barHeight * i; 
+    
+    const inputX = margin + inputOffset * i * zoom;
 
-    const rectX = margin + outputOffset * barIndex * zoom;
-    const rectY = outputYBase + barHeight * barIndex; 
-    const inputX = margin + inputOffset * barIndex * zoom;
-
-    const hslValues = hslRanges.map((range) => Math.floor(interpolate(barIndex, 0, maxNumBars, ...range)));
+    const hslValues = hslRanges.map((range) => Math.floor(interpolate(i, 0, maxNumBars, ...range)));
     context.fillStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3]}%)`;
     context.strokeStyle = context.fillStyle; 
 
     context.fillRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
     context.strokeRect(rectX, rectY, segmentWidth * zoom, barHeight - 2);
+
     context.fillRect(inputX, margin + 1, segmentWidth * zoom, barHeight - 2);
     context.strokeRect(inputX, margin + 1, segmentWidth * zoom, barHeight - 2);
 
-    if (barIndex > 0) {
+    if (i > 0) {
       const shiftLeftStart = Math.max(inputX - maxShiftSlider.value * zoom, margin);
+
       context.fillStyle = `hsl(${hslValues[0]} ${hslValues[1]}% ${hslValues[2]}% / ${hslValues[3] - 50}%)`;
       context.fillRect(shiftLeftStart, margin + 3, inputX - shiftLeftStart, barHeight - 6);
       context.fillRect(inputX + segmentWidth * zoom, margin + 3, maxShiftSlider.value * zoom, barHeight - 6);  
@@ -606,6 +554,8 @@ function updateCanvas() {
   }
 
   const fadeBottom = context.createLinearGradient(0, 135, 0, 158);
+  // fadeBottom.addColorStop(0, "#404d5a00");
+  // fadeBottom.addColorStop(1, "#404d5aff");
   fadeBottom.addColorStop(0, "#363e4a00");
   fadeBottom.addColorStop(1, "#363e4aff");
   context.fillStyle = fadeBottom;
@@ -618,14 +568,16 @@ function updateCanvas() {
   context.fillRect(canvasWidth - 30, 0, canvasWidth, canvasHeight);
 }
 
-// Linearly maps a value in the range [xStart, xEnd] to the range [yStart, yEnd]
 function interpolate(x, xStart, xEnd, yStart, yEnd) {
   let xProgress = (x - xStart) / (xEnd - xStart);
   xProgress = Math.max(0, Math.min(1, xProgress));
   return yStart * (1 - xProgress) + yEnd * xProgress;
 }
 
-// Handles mouse events
+// canvas.addEventListener("mousedown", updateCanvasMouse);
+canvas.addEventListener("mousemove", updateCanvasMouse);
+canvas.addEventListener("mouseleave", updateCanvasMouse);
+
 function updateCanvasMouse(e) {
   const bounds = canvas.getBoundingClientRect();
   mouseX = e.clientX - bounds.x;
