@@ -2,7 +2,7 @@
 // - items marked TODO below (browser compatbility checks, file size checks and notices, extreme settings/sizes performance warning and expected audio artifact notices)
 // - memory things with how the audiobuffer stores and how to prevent unnecessary buildup
 // - big problem on Safari where the very first processing after starting or restarting the web worker takes ultra long, so if user happens to choose a long file first or right after reset, it will take forever
-// - download button
+// - test download button on different browsers
 // - last ui polishes on html side, clean up html structure and names, page title and favicon etc
 // - explanatory text including implementation details/notices to keep in mind (and if time, images as originally intended)
 
@@ -104,6 +104,9 @@ document.getElementById("reset-pitch-time").onclick = resetPitchTimeSettings;
 document.getElementById("reset-settings").onclick = resetOverlapAddSettings;
 checkPitchTimeDefaults();
 checkOverlapAddDefaults();
+
+// Sets up download button functionality
+document.getElementById("download").onclick = downloadAudio;
 
 // Sets up canvas and mouse movement tracking
 const canvas = document.getElementById("visualization");
@@ -222,6 +225,55 @@ function checkOverlapAddDefaults() {
   } else {
     document.getElementById("reset-settings").hidden = false;
   }
+}
+
+// Creates WAV blob from audio buffer and downloads it
+function downloadAudio() {
+  if (currentAudioDuration == 0) {
+    return;
+  }
+
+  const numSamples = activeAudioBuffer.length;
+  const numChannels = activeAudioBuffer.numberOfChannels;
+  const audioByteLength = numSamples * 4 * numChannels;
+  const fileByteLength = audioByteLength + 44;
+
+  const fileData = new ArrayBuffer(fileByteLength);
+  const fileDataView = new DataView(fileData);
+  const fileUint8View = new Uint8Array(fileData);
+  const encoder = new TextEncoder();
+
+  fileUint8View.set(encoder.encode("RIFF"), 0);
+  fileDataView.setUint32(4, fileByteLength - 8, true);
+  fileUint8View.set(encoder.encode("WAVE"), 8);
+
+  fileUint8View.set(encoder.encode("fmt "), 12);
+  fileDataView.setUint32(16, 16, true);
+  fileDataView.setUint16(20, 3, true);
+  fileDataView.setUint16(22, numChannels, true);
+  fileDataView.setUint32(24, 44100, true);
+  fileDataView.setUint32(28, 44100 * 4 * numChannels, true);
+  fileDataView.setUint16(32, 4 * numChannels, true);
+  fileDataView.setUint16(34, 32, true);
+
+  fileUint8View.set(encoder.encode("data"), 36);
+  fileDataView.setUint32(40, audioByteLength, true);
+  for (let i = 0; i < numSamples; i++) {
+    const startOffset = 44 + i * 4 * numChannels;
+    for (let j = 0; j < numChannels; j++) {
+      fileDataView.setFloat32(startOffset + j * 4, activeAudioBuffer.getChannelData(j)[i], true);
+    }
+  }
+
+  const fileBlob = new Blob([fileData], {type: "audio/wav"});
+  const fileUrl = URL.createObjectURL(fileBlob);
+  const anchor = document.getElementById("blob-link")
+  anchor.href = fileUrl;
+  const originalFilename = document.getElementById("filename").innerText;
+  anchor.download = `output_${originalFilename.substring(0, originalFilename.lastIndexOf("."))}.wav`;
+  anchor.click();
+  setTimeout(URL.revokeObjectURL(fileUrl), 0);
+  anchor.href = "";
 }
 
 
