@@ -102,6 +102,9 @@
       text-size-adjust: none;
       -webkit-text-size-adjust: none;
     }
+    a {
+      color: #b0c0ff;
+    }
   </style>
   <script src="main.js" defer></script>
 </head>
@@ -185,13 +188,29 @@
     <p class="explain-text">Usually, changing the speed of an audio track directly changes its pitch.
       To make 44.1 kHz digital audio sound twice as fast, for example, software could resample it by skipping every other sample, squeezing what previously took two seconds (88,200 samples) into one second (44,100 samples). 
       The effect is to squish the shape of the audio&rsquo;s waveform in half, doubling its frequency and pushing its pitch one octave higher.</p>
-    <p class="explain-text">Images here</p>
-    <p class="explain-text">Special techniques are needed to speed up or slow down audio without altering its pitch—or alter its pitch without affecting time. Many of these work in the <em>frequency domain.</em> The idea is to use the Fourier transform to decompose small sections of audio into a spectrum of different frequencies, shift some of those frequencies up, and synthesize new audio with the inverse Fourier transform. Performing this process on all of the sections that make up an audio track will change its pitch, which can be accompanied with simple resampling to get a pitch-independent time stretch effect.</p>
-    <p class="explain-text">This tool, however, works in the <em>time domain</em> with an overlap-add method. These are based on stretching or repitching audio by splitting it into short overlapping segments, spreading the segments out with a longer or shorter overlap, and adding them all back together to get a longer or shorter output. A window function, like the Hann (or raised cosine) window, gives a smooth fade out from one segment to the next.</p>
-    <p class="explain-text">More images here</p>
-    <p class="explain-text">Basic overlap-add algorithms can result in artifacts like phase cancellation, where the new overlap in the output shifts one segment by just the wrong amount to make the signals cancel each other out. This produces an unpleasant fluttering effect. The waveform similarity based overlap-add alorithm, described in [____cite paper], removes this artifact by (finish all this) </p>
-    <h2>(implementation details stuff too)</h2>
-    <p class="explain-text">(should include eg what to expect and why, repeating things that also interactivelty show up where appropriate)</p>
+    <!-- <p class="explain-text">Images here</p> -->
+    <p class="explain-text">Special techniques are needed to speed up or slow down audio without altering its pitch—or alter its pitch without affecting time.
+      Many of these work in the <em>frequency domain.</em>
+      The idea is to use the Fourier transform to decompose small sections of audio into a spectrum of different frequencies, shift some of those frequencies up, and synthesize new audio with the inverse Fourier transform.
+      Performing this process on all of the sections that make up an audio track will change its pitch, which can be accompanied with simple resampling to get a pitch-independent time stretch effect.</p>
+    <p class="explain-text">This tool, however, works in the <em>time domain</em> with an overlap-add method.
+      These methods stretch or repitch audio by splitting it into short overlapping segments, spreading the segments out with a longer or shorter overlap, and adding them all back together to get a longer or shorter output.
+      A window function, like the Hann (or raised cosine) window, gives a smooth fade out from one segment to the next.</p>
+    <!-- <p class="explain-text">More images here</p> -->
+    <p class="explain-text">Basic overlap-add algorithms can result in artifacts like phase cancellation, where the new overlap in the output shifts one segment by just the wrong amount to make the signals cancel each other out.
+      This produces an unpleasant fluttering effect.
+      The waveform similarity based overlap-add (WSOLA) algorithm removes this artifact by slightly shifting each segment by the amount that produces minimal phase cancellation within some small range, like &plusmn;10 ms.</p>
+    <p class="explain-text">The algorithm checks the cross-correlation between the prospective next segment and the end of the previous segment for each possible shift within that range and selects the shift with the greatest cross-correlation.
+      Set the maximum shift slider to 0 ms to observe the difference without WSOLA.</p>
+    <p class="explain-text">The default settings use a segment length of 100 ms. Each segment overlaps by 30 ms in the output.
+      The overlaps in the input are determined based on the pitch and time stretch settings, in addition to shifts from waveform similarity calculations.</p>
+    <h2>Implementation details and resources</h2>
+    <p class="explain-text">This tool decodes and plays audio files using the Web Audio API.
+      Audio is stored as uncompressed 44.1 kHz 32-bit float PCM data and processed through a WebAssembly module that was written in C and compiled with Emscripten.
+      Keep in mind that uncompressed audio files can get very large (a minute of stereo audio takes over 20 MB), so longer clips will require lots of memory and may take a few seconds to process.</p>
+    <p class="explain-text">The source code is available at <a href="https://github.com/ashivaram23/pitchshifter">https://github.com/ashivaram23/pitchshifter</a>.</p>
+    <p class="explain-text">The WSOLA algorithm was originally described in a 1993 paper by W. Verhelst and M. Roelands, available at <a href="https://ieeexplore.ieee.org/document/319366">https://ieeexplore.ieee.org/document/319366</a>.</p>
+    <p class="explain-text">A useful review of WSOLA and other time stretching algorithms by Jonathan Driedger and Meinard Müller is <a href="https://www.mdpi.com/2076-3417/6/2/57">https://www.mdpi.com/2076-3417/6/2/57</a>.</p>
   </div>
 </body>
 

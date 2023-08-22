@@ -5,6 +5,7 @@
 // - test download button on different browsers
 // - last ui polishes on html side, clean up html structure and names, page title and favicon etc
 // - explanatory text including implementation details/notices to keep in mind (and if time, images as originally intended)
+// - link attributions eg wav article somewhere (in the code or a readme -- explanatory text should ofc have links for algorithm stuff (which should also be in readme))
 
 
 
