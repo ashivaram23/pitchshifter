@@ -3,8 +3,8 @@
 // - memory things with how the audiobuffer stores and how to prevent unnecessary buildup
 // - big problem on Safari where the very first processing after starting or restarting the web worker takes ultra long, so if user happens to choose a long file first or right after reset, it will take forever
 // - test download button on different browsers
-// - last ui polishes on html side, clean up html structure and names, page title and favicon etc
-// - explanatory text including implementation details/notices to keep in mind (and if time, images as originally intended)
+// - last ui polishes on html side, clean up html structure and names, page title and favicon and other head tags etc
+// - finish explanatory text and if time, images as originally intended
 // - link attributions eg wav article somewhere (in the code or a readme -- explanatory text should ofc have links for algorithm stuff (which should also be in readme))
 
 
